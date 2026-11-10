@@ -14,10 +14,6 @@ use super::{Rgba, facing, fbm, glint, hash, mix, scale as dim, smooth};
 
 /// Tape colour for the game title.
 pub const RED: [f32; 3] = [150.0, 28.0, 30.0];
-/// Tape colour for one of the side names.
-pub const GREEN: [f32; 3] = [30.0, 96.0, 70.0];
-/// Tape colour for the other side name.
-pub const GREY: [f32; 3] = [78.0, 80.0, 84.0];
 /// Tape colour for the key help and every label that changes during play.
 pub const BLACK: [f32; 3] = [30.0, 30.0, 34.0];
 /// Plastic goes white where the embosser stretches it.

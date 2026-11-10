@@ -22,7 +22,7 @@ use palette::{bayer, median_cut};
 pub(crate) use shading::{facing, glint, lerp, mix, scale, smooth};
 
 use fridge::paint_fridge;
-use spores::{penicillium, penicillium_neck, rhizopus, rhizopus_neck};
+pub(crate) use spores::MOULDS;
 
 /// Screen width in pixels.
 pub const W: usize = 640;
@@ -85,8 +85,6 @@ pub const MESSAGE_STEP: i32 = 27;
 pub const KEYS_Y: i32 = 442;
 /// Title on the top strip.
 pub const GAME_TITLE: &str = "SPORAGON";
-/// Side names, indexed by side.
-pub const SIDE_NAMES: [&str; 2] = ["PENICILLIUM", "RHIZOPUS"];
 /// Key help on the bottom strip.
 pub const KEYS: &str = "N NEW D DEMO";
 
@@ -248,17 +246,13 @@ const TAPE_UNDERLAYS: [[f32; 3]; 2] = [[214.0, 204.0, 168.0], [150.0, 138.0, 100
 ///
 /// The order of every step is significant: it fixes the palette and so every pixel on screen.
 pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
-    let sprites: [Vec<Vec<Rgba>>; 2] = [0u32, 1].map(|side| {
+    let sprites: [Vec<Vec<Rgba>>; 2] = MOULDS.each_ref().map(|mould| {
         (0..VARIANTS as u32)
             .map(|variant| {
                 (0..STAGES)
                     .map(|stage| {
                         let growth = (stage + 1) as f32 / STAGES as f32;
-                        if side == 0 {
-                            penicillium(variant * 31 + 1, growth)
-                        } else {
-                            rhizopus(variant * 37 + 2, growth)
-                        }
+                        (mould.colony)(variant * mould.seed.0 + mould.seed.1, growth)
                     })
                     .collect()
             })
@@ -268,13 +262,12 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
     let mut background_rgb = paint_fridge(centers);
 
     // The labels that never change are stuck on the wall for good.
-    let tapes = [dymo::GREEN, dymo::GREY];
     for (text, tape, y) in [
         (GAME_TITLE, dymo::RED, TITLE_Y),
         (KEYS, dymo::BLACK, KEYS_Y),
     ]
     .into_iter()
-    .chain((0..2).map(|s| (SIDE_NAMES[s], tapes[s], SIDE_Y[s])))
+    .chain(MOULDS.iter().zip(SIDE_Y).map(|(m, y)| (m.name, m.tape, y)))
     {
         let strip = dymo::strip(text, tape, 2, y as u32);
         dymo::bake(&mut background_rgb, W, &strip, HUD_CX, y);
@@ -311,7 +304,7 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
         })
     });
 
-    let necks: [[Vec<(Rgba, Rgba)>; 3]; 2] = [0usize, 1].map(|side| {
+    let necks: [[Vec<(Rgba, Rgba)>; 3]; 2] = MOULDS.each_ref().map(|mould| {
         BRIDGE_DIRS.map(|(q, r)| {
             let (x0, y0) = cell_center(0, 0);
             let (x1, y1) = cell_center(q, r);
@@ -319,11 +312,7 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
             (0..BRIDGE_VARIANTS as u32)
                 .map(|variant| {
                     let seed = variant * 19 + 3;
-                    if side == 0 {
-                        penicillium_neck(offset, seed, BRIDGE)
-                    } else {
-                        rhizopus_neck(offset, seed, BRIDGE)
-                    }
+                    (mould.neck)(offset, seed, BRIDGE)
                 })
                 .collect()
         })

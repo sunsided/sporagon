@@ -66,7 +66,11 @@ mod tests {
                 "{line:?} is too long"
             );
         }
-        for name in art::SIDE_NAMES.iter().chain([&art::KEYS, &art::GAME_TITLE]) {
+        for name in art::MOULDS
+            .iter()
+            .map(|m| &m.name)
+            .chain([&art::KEYS, &art::GAME_TITLE])
+        {
             assert!(
                 art::dymo::width(name, 2) <= art::HUD_W,
                 "{name:?} is too long"

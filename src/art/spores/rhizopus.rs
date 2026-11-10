@@ -2,6 +2,7 @@
 //! and the cotton necks that join neighbouring colonies.
 
 use super::*;
+use crate::art::slime::Speck;
 
 /// Rhizopus cotton at sprite pixel `(x, y)`, `radius_frac` (0 on the axis, 1 at the edge)
 /// from the colony centre or the neck axis: `(density, colour)` before lighting.
@@ -30,7 +31,7 @@ fn cotton(x: usize, y: usize, seed: u32, radius_frac: f32) -> (f32, [f32; 3]) {
 /// - Draw up to 44 sporangia (quadratic in growth, so they appear late), each with a slanted
 ///   stalk, a shadow, a white or ripe black head, and a highlight towards the bulb.
 /// - Finish with `glisten`.
-pub(in crate::art) fn rhizopus(seed: u32, growth: f32) -> Rgba {
+fn colony(seed: u32, growth: f32) -> Rgba {
     let mut img = Rgba::new(SPR);
     let mut rng = Rng(0xD1B5_4A32_D192_ED03 ^ (seed as u64 * 104_729));
     let center = SPR as f32 / 2.0;
@@ -152,7 +153,7 @@ pub(in crate::art) fn rhizopus(seed: u32, growth: f32) -> Rgba {
 /// - Draw 45 hyphae as random walks of 8..22 steps of 0.7 pixels, mostly along the axis in
 ///   a random direction, starting anywhere within `reach` and ±9 pixels of the axis.
 /// - Draw 12 ripe sporangia, kept 6 pixels clear of the faded ends.
-pub(in crate::art) fn rhizopus_neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgba) {
+fn neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgba) {
     let mut img = Rgba::new(size);
     let neck = Neck::new(v, size);
     let mut rng = Rng(0x7F4A_7C15_D1B5_4A32 ^ (seed as u64 * 2_654_435_761));
@@ -229,3 +230,24 @@ pub(in crate::art) fn rhizopus_neck(v: (f32, f32), seed: u32, size: usize) -> (R
 
     (Rgba::new(size), img)
 }
+
+/// Rhizopus's sprites, slime and label.
+pub(super) const MOULD: Mould = Mould {
+    name: "RHIZOPUS",
+    tape: [78.0, 80.0, 84.0],
+    colony,
+    neck,
+    seed: (37, 2),
+    // Its slime is thicker and murkier than Penicillium's.
+    slime: SlimeLook {
+        deep: [96.0, 92.0, 70.0],
+        light: [204.0, 198.0, 164.0],
+        base_alpha: 0.68,
+        // Spores carried along.
+        speck: Speck {
+            colour: [34.0, 32.0, 34.0],
+            min_height: 0.3,
+            chance: 0.05,
+        },
+    },
+};

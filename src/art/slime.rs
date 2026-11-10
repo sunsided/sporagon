@@ -6,6 +6,7 @@
 //! space of a square sprite (top-left at 0, 0). Colours are RGB 0..255 as `f32`, coverage
 //! (alpha) is 0..1. Light comes from the fridge bulb, top right, the viewer looks straight down.
 
+use super::spores::MOULDS;
 use super::{Quantizer, Rgba, facing, fbm, glint, hash, mix, scale, smooth};
 use game_toolkit_dosvideo::prelude::Bitmap;
 use std::f32::consts::PI;
@@ -40,12 +41,26 @@ fn field(balls: &[Ball], x: f32, y: f32) -> f32 {
     field_value * (0.9 + 0.2 * fbm(x / 4.5, y / 4.5, 5, 2))
 }
 
-/// Deep and light body colour per side (0 Penicillium, 1 Rhizopus).
-const BODY: [([f32; 3], [f32; 3]); 2] = [
-    // Penicillium weeps a clear, yellowish exudate.
-    ([92.0, 92.0, 54.0], [200.0, 196.0, 140.0]),
-    ([96.0, 92.0, 70.0], [204.0, 198.0, 164.0]),
-];
+/// How one mould's slime looks; each mould sets its own in its [`super::spores::Mould`].
+pub(crate) struct SlimeLook {
+    /// Body colour where the slime is thin and in shadow, RGB 0..255.
+    pub(crate) deep: [f32; 3],
+    /// Body colour where it is thick and facing the bulb, RGB 0..255.
+    pub(crate) light: [f32; 3],
+    /// Opacity at the thin edge, 0..1; up to 0.3 more is added where it is thick.
+    pub(crate) base_alpha: f32,
+    /// What floats in it.
+    pub(crate) speck: Speck,
+}
+
+/// Something suspended in the slime, scattered pixel by pixel.
+pub(crate) struct Speck {
+    pub(crate) colour: [f32; 3],
+    /// Only where the slime is thicker than this (height 0..1).
+    pub(crate) min_height: f32,
+    /// Share of those pixels that show one, 0..1.
+    pub(crate) chance: f32,
+}
 
 /// Pixel offset used for the finite-difference slope of the height field.
 const SLOPE_STEP: f32 = 0.8;
@@ -95,8 +110,8 @@ pub fn shade(balls: &[Ball], side: usize, x: f32, y: f32) -> Option<([f32; 3], f
     // Sharp: only slopes facing the bulb glint, flat tops stay clear.
     let specular = half.max(0.0).powi(70);
 
-    let (deep, light) = BODY[side];
-    let body = mix(deep, light, height * 0.4 + diffuse * 0.5);
+    let look = &MOULDS[side].slime;
+    let body = mix(look.deep, look.light, height * 0.4 + diffuse * 0.5);
     let mut colour = scale(body, 0.6 + 0.55 * diffuse);
 
     // The meniscus at the edge is darker, with a thin bright refraction line inside it.
@@ -108,18 +123,14 @@ pub fn shade(balls: &[Ball], side: usize, x: f32, y: f32) -> Option<([f32; 3], f
 
     // Per-pixel random in 0..1, stable across frames (seeded per side).
     let speck = hash(x as i32, y as i32, 900 + side as u32);
-    if side == 1 && height > 0.3 && speck < 0.05 {
-        colour = [34.0, 32.0, 34.0]; // spores carried along
-    } else if side == 0 && height > 0.25 && speck < 0.015 {
-        colour = [250.0, 246.0, 220.0]; // trapped air bubble
+    if height > look.speck.min_height && speck < look.speck.chance {
+        colour = look.speck.colour;
     }
 
     // 2.5x so the glint saturates to white before its very narrow peak falls off.
     colour = mix(colour, [255.0, 255.0, 246.0], (specular * 2.5).min(1.0));
 
-    // Penicillium's exudate is clearer than Rhizopus' slime.
-    let base_alpha = if side == 0 { 0.42 } else { 0.68 };
-    let alpha = base_alpha + 0.3 * smooth(0.0, 0.6, height);
+    let alpha = look.base_alpha + 0.3 * smooth(0.0, 0.6, height);
     Some((colour, alpha.max(specular)))
 }
 

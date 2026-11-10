@@ -2,6 +2,7 @@
 //! advancing margin and amber guttation droplets, and the velvet necks that join them.
 
 use super::*;
+use crate::art::slime::Speck;
 
 // Penicillium, shared by colonies and the necks between them so the two meet without a seam.
 
@@ -33,7 +34,7 @@ const FRINGE: [f32; 3] = [222.0, 228.0, 216.0];
 /// - Just outside the edge, up to 1.25, paint a thinning fuzz of young hyphae.
 /// - On older colonies (growth > 0.6), add 2..=4 amber guttation droplets.
 /// - Finish with `glisten`.
-pub(in crate::art) fn penicillium(seed: u32, growth: f32) -> Rgba {
+fn colony(seed: u32, growth: f32) -> Rgba {
     let mut img = Rgba::new(SPR);
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15 ^ (seed as u64 * 7919));
     let center = SPR as f32 / 2.0;
@@ -150,7 +151,7 @@ pub(in crate::art) fn penicillium(seed: u32, growth: f32) -> Rgba {
 ///   (lit on the flank facing the bulb), a fine grain and buckling wrinkles, and finally
 ///   the same spore specks as the colony.
 /// - Just outside, up to 1.25: the same thinning fringe as the colony.
-pub(in crate::art) fn penicillium_neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgba) {
+fn neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgba) {
     let mut rim_img = Rgba::new(size);
     let mut img = Rgba::new(size);
     let neck = Neck::new(v, size);
@@ -228,3 +229,24 @@ pub(in crate::art) fn penicillium_neck(v: (f32, f32), seed: u32, size: usize) ->
 
     (rim_img, img)
 }
+
+/// Penicillium's sprites, slime and label.
+pub(super) const MOULD: Mould = Mould {
+    name: "PENICILLIUM",
+    tape: [30.0, 96.0, 70.0],
+    colony,
+    neck,
+    seed: (31, 1),
+    // It weeps a clear, yellowish exudate, the clearer of the two slimes.
+    slime: SlimeLook {
+        deep: [92.0, 92.0, 54.0],
+        light: [200.0, 196.0, 140.0],
+        base_alpha: 0.42,
+        // Trapped air bubbles.
+        speck: Speck {
+            colour: [250.0, 246.0, 220.0],
+            min_height: 0.25,
+            chance: 0.015,
+        },
+    },
+};

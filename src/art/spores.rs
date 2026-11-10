@@ -12,8 +12,28 @@ use super::*;
 mod penicillium;
 mod rhizopus;
 
-pub(super) use penicillium::{penicillium, penicillium_neck};
-pub(super) use rhizopus::{rhizopus, rhizopus_neck};
+use super::slime::SlimeLook;
+
+/// Everything that sets one mould apart: its sprites, its slime and its label. Each mould's
+/// file defines its own as `MOULD`.
+pub(crate) struct Mould {
+    /// The text on its name strip.
+    pub(crate) name: &'static str,
+    /// The plastic colour of its name strip, RGB 0..255.
+    pub(crate) tape: [f32; 3],
+    /// Paints a colony sprite (`SPR` square) for a seed at growth 0..1.
+    pub(crate) colony: fn(seed: u32, growth: f32) -> Rgba,
+    /// Paints the `(rim, core)` neck sprites (`size` square) towards a neighbour at offset `v`.
+    pub(crate) neck: fn(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgba),
+    /// Colony seed for sprite variant `n`: `n * seed.0 + seed.1`, distinct per mould so the
+    /// two never share a pattern.
+    pub(crate) seed: (u32, u32),
+    /// How its slime looks.
+    pub(crate) slime: SlimeLook,
+}
+
+/// The moulds, indexed by side: 0 Penicillium, 1 Rhizopus (as `board::Side`).
+pub(crate) const MOULDS: [Mould; 2] = [penicillium::MOULD, rhizopus::MOULD];
 
 /// Make a colony look wet: a glossy sheen on the side facing the bulb and a few beads of
 /// clear liquid.
