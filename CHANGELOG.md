@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Quick clicks and trackpad taps that start and end within one frame now select and move
+  colonies; they were dropped before.
+- The browser build no longer asks for an `assets/manifest.txt` on start, a 404 on every page
+  that embeds it. Both fixes come with game-toolkit-dosvideo 0.3.2.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added

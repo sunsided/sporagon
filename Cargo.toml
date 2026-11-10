@@ -9,7 +9,7 @@ authors = ["Markus Mayer"]
 publish = false
 
 [dependencies]
-game-toolkit-dosvideo = "0.3"
+game-toolkit-dosvideo = "0.3.2"
 
 # Browser build only: the games site's restart event (src/host.rs).
 [target.'cfg(target_arch = "wasm32")'.dependencies]

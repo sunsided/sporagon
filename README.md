@@ -8,7 +8,7 @@ card ([game-toolkit-dosvideo](https://github.com/sunsided/game-toolkit-dosvideo)
 
 ## Playing
 
-Play it in the browser at [games.markusmayer.dev](https://games.markusmayer.dev) (each release)
+Play it in the browser at [games.markusmayer.dev/sporagon](https://games.markusmayer.dev/sporagon/) (each release)
 or [sunsided.github.io/sporagon](https://sunsided.github.io/sporagon/) (latest `main`), or natively:
 
 ```sh

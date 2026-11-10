@@ -799,9 +799,9 @@ checksum = "76a15bbc5cc7717fffb6332273b5ede534bb48bd7320dff56290ac0b85a72d6f"
 
 [[package]]
 name = "game-toolkit-dosvideo"
-version = "0.3.0"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b828e786c0e7013b3415f0cc10466f1996bad7933b02e345ae4960267bccc85c"
+checksum = "55befac05d593d6d8dca2c7ee9e59d383f9fe93253492f8cae6bfb310a1de284"
 dependencies = [
  "game-toolkit",
  "game-toolkit-dosaudio",
