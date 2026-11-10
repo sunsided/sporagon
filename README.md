@@ -57,7 +57,7 @@ with alpha-beta pruning.
 ## Development
 
 Code: `src/board.rs` (rules, AI), `src/main.rs` (game loop, animation, screen),
-`src/art/` (`mod.rs` palette and layout, `spores.rs` the moulds, `slime.rs`, `fridge.rs`).
+`src/art.rs` (palette and layout) with `src/art/` (`spores.rs` the moulds, `slime.rs`, `fridge.rs`).
 
 ```sh
 task test       # rules, AI self-play, layout
