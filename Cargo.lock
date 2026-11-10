@@ -2498,6 +2498,8 @@ name = "sporagon"
 version = "0.1.0"
 dependencies = [
  "game-toolkit-dosvideo",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

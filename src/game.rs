@@ -321,8 +321,8 @@ impl DosGame for Sporagon {
 
     /// One frame:
     ///
-    /// 1. keys: Esc quits, N starts over, D toggles demo mode (handing the turn to the
-    ///    computer if the human was to move);
+    /// 1. a restart from the games site starts over; keys: Esc quits, N starts over, D
+    ///    toggles demo mode (handing the turn to the computer if the human was to move);
     /// 2. the clock ticks and finished animations, oozes and vanishings are dropped;
     /// 3. the phase advances: a click on the human's turn, the next turn once nothing is
     ///    moving on the tray any more, or the computer's move once its pause has run out;
@@ -330,6 +330,10 @@ impl DosGame for Sporagon {
     /// 5. the fluorescent tube, which now and then (1 in 500 per frame) plays a blink pattern
     ///    by dimming the palette.
     fn step(&mut self, dos: &mut Dos) {
+        // The games site opened the game again: start it fresh.
+        if crate::host::restart_requested() {
+            self.new_game();
+        }
         while let Some(key) = dos.getch() {
             match key.scan {
                 sc::ESC => dos.exit(),

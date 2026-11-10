@@ -4,6 +4,7 @@
 mod art;
 mod board;
 mod game;
+mod host;
 
 use game_toolkit_dosvideo::prelude::*;
 
@@ -25,6 +26,6 @@ fn main() -> anyhow::Result<()> {
             .with_bus(BusTiming::PCI)
             .with_keys(KEYS)
             // In the browser: the canvas in index.html, or the one the games site creates.
-            .with_canvas_id("sporagon"),
+            .with_canvas_id(host::CANVAS),
     )
 }

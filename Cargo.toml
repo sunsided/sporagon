@@ -11,6 +11,11 @@ publish = false
 [dependencies]
 game-toolkit-dosvideo = "0.3"
 
+# Browser build only: the games site's restart event (src/host.rs).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "EventTarget", "Event"] }
+
 # Procedural art and the AI search are heavy; keep debug builds playable.
 [profile.dev]
 opt-level = 2
