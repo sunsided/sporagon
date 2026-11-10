@@ -21,9 +21,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Audio and input crates of the windowing stack link against these.
+      # The only system libraries the dependencies link at build time: ALSA (audio), udev
+      # (input) and D-Bus; Wayland and X11 are loaded at run time.
       - name: Install system libraries
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev libdbus-1-dev pkg-config
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: rustfmt, clippy
