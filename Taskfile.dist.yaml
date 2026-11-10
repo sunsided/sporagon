@@ -33,7 +33,7 @@ tasks:
       - cargo clippy --all-targets -- -D warnings
 
   check:
-    desc: Everything CI would run (lint and tests)
+    desc: Everything CI runs (lint and tests)
     cmds:
       - task: lint
       - task: test
