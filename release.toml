@@ -1,0 +1,28 @@
+# Config for `cargo release` (https://github.com/crate-ci/cargo-release).
+#
+# Install once:  cargo install cargo-release --locked
+#
+#   task release VERSION=0.2.0      (or: cargo release 0.2.0 --execute)
+#
+# Bumps the version in Cargo.toml, stamps CHANGELOG.md (`## [Unreleased]` becomes
+# `## [X.Y.Z] - <date>` under a fresh `[Unreleased]`, compare links updated), commits
+# "Release X.Y.Z", tags vX.Y.Z and pushes. The tag runs .github/workflows/release.yml, which
+# builds, attests and publishes the GitHub release with that CHANGELOG section as notes, and
+# announces it to games.markusmayer.dev. The crate is never published to crates.io.
+#
+# Dry-run by dropping --execute.
+
+tag-name = "v{{version}}"
+pre-release-commit-message = "Release {{version}}"
+publish = false
+
+# Only release from main.
+allow-branch = ["main"]
+
+pre-release-replacements = [
+  { file = "CHANGELOG.md", search = "## \\[Unreleased\\]", replace = "## [Unreleased]\n\n## [{{version}}] - {{date}}", exactly = 1 },
+  # Every release after the first: the previous tag's compare link.
+  { file = "CHANGELOG.md", search = "\\[Unreleased\\]: (\\S+)/compare/(\\S+)\\.\\.\\.HEAD", replace = "[Unreleased]: $1/compare/{{tag_name}}...HEAD\n[{{version}}]: $1/compare/$2...{{tag_name}}", min = 0, max = 1 },
+  # The first release: no earlier tag to compare against.
+  { file = "CHANGELOG.md", search = "\\[Unreleased\\]: (\\S+)/commits/main", replace = "[Unreleased]: $1/compare/{{tag_name}}...HEAD\n[{{version}}]: $1/releases/tag/{{tag_name}}", min = 0, max = 1 },
+]

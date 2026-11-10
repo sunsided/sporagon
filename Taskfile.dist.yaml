@@ -27,10 +27,43 @@ tasks:
       - cargo test {{.CLI_ARGS}}
 
   lint:
-    desc: Check formatting and run clippy
+    desc: Check formatting and run clippy (native and browser targets)
     cmds:
       - cargo fmt --check
       - cargo clippy --all-targets -- -D warnings
+      - cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+  lint:actions:
+    desc: Lint the GitHub workflows (actionlint, zizmor)
+    preconditions:
+      - sh: command -v actionlint
+        msg: "actionlint not found - go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+      - sh: command -v zizmor
+        msg: "zizmor not found - cargo install zizmor --locked"
+    cmds:
+      - actionlint
+      - zizmor .github/workflows
+
+  web:
+    desc: Serve the browser build with live rebuild at http://localhost:8080 (needs trunk)
+    cmds:
+      - trunk serve
+
+  web:build:
+    desc: Build for the browser into dist/, as the release does (needs trunk)
+    cmds:
+      - trunk build --release --locked
+
+  release:
+    desc: "Bump the version, stamp CHANGELOG.md, commit, tag and push (VERSION=x.y.z); CI releases"
+    requires:
+      vars: [VERSION]
+    preconditions:
+      - sh: command -v cargo-release
+        msg: "cargo-release not found - cargo install cargo-release --locked"
+    prompt: "Release {{.VERSION}}: bump, commit, tag v{{.VERSION}} and push?"
+    cmds:
+      - cargo release {{.VERSION}} --execute
 
   check:
     desc: Everything CI runs (lint and tests)

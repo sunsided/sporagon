@@ -23,6 +23,8 @@ fn main() -> anyhow::Result<()> {
     run::<game::Sporagon>(
         DosConfig::new("SPORAGON", Adapter::Svga { memory_kib: 1024 })
             .with_bus(BusTiming::PCI)
-            .with_keys(KEYS),
+            .with_keys(KEYS)
+            // In the browser: the canvas in index.html, or the one the games site creates.
+            .with_canvas_id("sporagon"),
     )
 }

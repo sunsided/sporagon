@@ -1,0 +1,14 @@
+[build]
+target = "index.html"
+dist = "dist"
+# Relative URLs so the build works from any sub-path (the games site serves it from
+# /builds/sporagon/<version>/).
+public_url = "./"
+# Stable file names (sporagon.js / sporagon_bg.wasm) so a host page can import them.
+filehash = false
+
+[serve]
+port = 8080
+
+[watch]
+ignore = ["target", "dist", "docs"]

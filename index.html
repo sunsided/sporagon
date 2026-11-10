@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SPORAGON</title>
+    <!-- wasm-opt rejects what current Rust emits by default unless told to accept it. -->
+    <link data-trunk rel="rust" data-bin="sporagon"
+      data-wasm-opt-params="--enable-bulk-memory --enable-bulk-memory-opt --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-multivalue --enable-reference-types" />
+    <!-- The licence travels with every web build. -->
+    <link data-trunk rel="copy-file" href="LICENSE" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; }
+      body { display: flex; align-items: center; justify-content: center; }
+      /* 4:3, the game's 640x480 screen. */
+      #sporagon {
+        outline: none;
+        width: min(100vw, calc(100vh * 4 / 3)) !important;
+        height: min(100vh, calc(100vw * 3 / 4)) !important;
+        touch-action: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The game binds to this id; the games site creates a canvas of the same id. -->
+    <canvas id="sporagon" tabindex="0"></canvas>
+  </body>
+</html>

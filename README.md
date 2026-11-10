@@ -8,9 +8,14 @@ card ([game-toolkit-dosvideo](https://github.com/sunsided/game-toolkit-dosvideo)
 
 ## Playing
 
+Play it in the browser at [games.markusmayer.dev](https://games.markusmayer.dev), or natively:
+
 ```sh
 task run        # or: cargo run --release
 ```
+
+Each [release](https://github.com/sunsided/sporagon/releases) also has a Linux binary and the
+browser build as a zip.
 
 Click one of your colonies, then an empty cup:
 
@@ -67,9 +72,25 @@ split into `fridge/tray.rs`, `wall.rs`, `fixtures.rs` and `drops.rs`; `dymo.rs` 
 
 ```sh
 task test       # rules, AI self-play, layout
-task check      # fmt, clippy, tests
+task check      # fmt, clippy (native and wasm), tests
+task web        # the browser build at http://localhost:8080 (needs trunk)
 task screenshot # refresh docs/screenshot.jpg (needs a display)
 ```
+
+### Releasing
+
+`task release VERSION=x.y.z` ([cargo-release](https://github.com/crate-ci/cargo-release), set up
+in `release.toml`; nothing goes to crates.io) bumps the version, turns `## [Unreleased]` in
+`CHANGELOG.md` into the release's section, commits, tags `vX.Y.Z` and pushes. The tag runs
+`.github/workflows/release.yml`: it builds the Linux binary and the browser zip, writes
+`SHA256SUMS`, attests both builds' provenance and publishes the GitHub release with the
+changelog section as notes. Then it announces the release to
+[games.markusmayer.dev](https://github.com/sunsided/games.markusmayer.dev), which checks the
+zip against the checksums and the attestation before it serves it.
+
+The announcement runs in this repository's `games` environment, which only tags `v*` may
+deploy to. It needs the repository variable `GAMES_ANNOUNCE_APP_ID` and the environment secret
+`GAMES_ANNOUNCE_APP_PRIVATE_KEY`, the games site's announce app (see its README).
 
 ## License
 
