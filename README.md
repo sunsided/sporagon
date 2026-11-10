@@ -60,8 +60,9 @@ with alpha-beta pruning.
 
 Code: `src/board.rs` (rules, AI), `src/game.rs` (state, turns, input, sound, game loop) with
 `src/game/` (`play.rs` move animation, `draw.rs` the frame, `messages.rs` the label texts),
-`src/art.rs` (layout and painting the scene) with `src/art/` (`spores.rs` the moulds, `slime.rs`,
-`fridge.rs`, `dymo.rs` the labels, `palette.rs` median cut and dithering, `noise.rs`, `shading.rs`).
+`src/art.rs` (layout and painting the scene) with `src/art/` (`spores.rs` the moulds, split
+into `spores/penicillium.rs` and `spores/rhizopus.rs`; `slime.rs`, `fridge.rs`, `dymo.rs` the
+labels, `palette.rs` median cut and dithering, `noise.rs`, `shading.rs`).
 
 ```sh
 task test       # rules, AI self-play, layout
