@@ -4,11 +4,35 @@
 mod art;
 mod board;
 
-use art::{BRIDGE, Rng, SPR, STAGES, Scene, slime};
+use art::{BRIDGE, Rgba, Rng, SPR, STAGES, Scene, slime};
 use board::{Board, Cell, Move, Side, geometry};
 use game_toolkit_dosvideo::prelude::*;
+use std::collections::HashMap;
 
 const PLAYER: Side = Side::Peni;
+
+// What the black label strips say, one strip per line.
+const MSG_GROWING: &str = "SOMETHING\nGROWS...";
+const MSG_YOUR_MOVE: &str = "YOUR MOVE\nPICK MOULD\nTHEN A CUP";
+const MSG_PENI_THINKS: &str = "PENICILLIUM\nSPREADS...";
+const MSG_RHIZO_THINKS: &str = "RHIZOPUS\nSPREADS...";
+const MSG_WIN: &str = "YOU WIN!\nTHE FRIDGE\nIS YOURS";
+const MSG_LOSE: &str = "YOU LOSE\nRHIZOPUS\nOWNS IT";
+const MSG_PENI_WINS: &str = "PENICILLIUM\nWINS";
+const MSG_RHIZO_WINS: &str = "RHIZOPUS\nWINS";
+const MSG_DRAW: &str = "A DRAW\nNOBODY\nCLEANS UP";
+#[cfg(test)]
+const MESSAGES: [&str; 9] = [
+    MSG_GROWING,
+    MSG_YOUR_MOVE,
+    MSG_PENI_THINKS,
+    MSG_RHIZO_THINKS,
+    MSG_WIN,
+    MSG_LOSE,
+    MSG_PENI_WINS,
+    MSG_RHIZO_WINS,
+    MSG_DRAW,
+];
 const AI_DEPTH: u32 = 3;
 /// Frames a colony takes to grow in.
 const GROW: u64 = 26;
@@ -72,6 +96,8 @@ struct Sfx {
 
 struct Sporagon {
     scene: Scene,
+    /// Label strips made so far, by text and letter size.
+    labels: HashMap<(String, usize), Rgba>,
     frame: Bitmap,
     cursor: Bitmap,
     board: Board,
@@ -84,7 +110,8 @@ struct Sporagon {
     rng: Rng,
     t: u64,
     sfx: Option<Sfx>,
-    flicker: u32,
+    /// The failing tube: a blink pattern and how far into it we are.
+    flicker: Option<(&'static [u8], usize)>,
     /// The computer plays both sides.
     demo: bool,
     message: &'static str,
@@ -126,7 +153,7 @@ impl Sporagon {
             })
             .collect();
         self.phase = Phase::Growing(PLAYER);
-        self.message = "Something is\ngrowing...";
+        self.message = MSG_GROWING;
     }
 
     fn cell_at(&self, x: i32, y: i32) -> Option<usize> {
@@ -229,8 +256,7 @@ impl Sporagon {
 
     /// Start `side`'s turn, or end the game if it cannot move.
     fn begin_turn(&mut self, side: Side) {
-        let full = !self.board.cells.contains(&Cell::Empty);
-        if full || self.board.count(side) == 0 || !self.board.has_moves(side) {
+        if !self.board.has_moves(side) {
             for (k, c) in self.board.fill_for(side.other()).into_iter().enumerate() {
                 self.anims.push(Anim {
                     cell: c,
@@ -239,10 +265,12 @@ impl Sporagon {
                 });
             }
             let (p, a) = (self.board.count(PLAYER), self.board.count(PLAYER.other()));
-            self.message = match p.cmp(&a) {
-                std::cmp::Ordering::Greater => "You win!\nThe fridge is\nall yours.",
-                std::cmp::Ordering::Less => "You lose.\nRhizopus owns\nthe fridge.",
-                std::cmp::Ordering::Equal => "A draw.\nNobody cleans\nthe fridge.",
+            self.message = match (p.cmp(&a), self.demo) {
+                (std::cmp::Ordering::Greater, false) => MSG_WIN,
+                (std::cmp::Ordering::Less, false) => MSG_LOSE,
+                (std::cmp::Ordering::Greater, true) => MSG_PENI_WINS,
+                (std::cmp::Ordering::Less, true) => MSG_RHIZO_WINS,
+                (std::cmp::Ordering::Equal, _) => MSG_DRAW,
             };
             self.sfx = Some(Sfx {
                 from: 200.0,
@@ -253,13 +281,13 @@ impl Sporagon {
             });
             self.phase = Phase::Over;
         } else if side == PLAYER && !self.demo {
-            self.message = "Your move.\nPick a colony,\nthen a cup.";
+            self.message = MSG_YOUR_MOVE;
             self.phase = Phase::Player;
         } else {
             self.message = if side == PLAYER {
-                "Penicillium is\nspreading..."
+                MSG_PENI_THINKS
             } else {
-                "Rhizopus is\nspreading..."
+                MSG_RHIZO_THINKS
             };
             self.phase = Phase::Thinking(side, 35);
         }
@@ -464,55 +492,52 @@ impl Sporagon {
             hex_outline(f, x, y, art::R - 3.0, art::WHITE, false);
         }
 
-        // The notes.
-        let font = Font::vga();
-        let ink = art::INK;
-        let (tx, ty, ..) = art::TAPE_TITLE;
-        f.text(tx + 10, ty + 9, "S P O R A G O N", art::BLOOD, None, font);
-        for (side, (x, y, _, _), name) in [
-            (Side::Peni, art::TAPE_PENI, "PENICILLIUM"),
-            (Side::Rhizo, art::TAPE_RHIZO, "RHIZOPUS"),
-        ] {
-            f.text(x + 8, y + 6, name, ink, None, font);
-            f.text(
-                x + 8,
-                y + 22,
-                if side == PLAYER { "(you)" } else { "(cpu)" },
-                art::DIM,
-                None,
-                font,
-            );
+        // The labels that change; the rest are part of the wall.
+        let (labels, q) = (&mut self.labels, &mut self.scene.quant);
+        for side in [Side::Peni, Side::Rhizo] {
+            let y = art::SIDE_Y[side as usize];
             f.blit(
                 &self.scene.colonies[side as usize][0][STAGES - 1],
-                x + 76,
-                y + 14,
+                art::HUD_X + 2,
+                y + 12,
                 Some(art::TRANSPARENT),
             );
-            let n = self.board.count(side);
-            big_number(f, x + 10, y + 42, n, art::PEN);
+            let score = self.board.count(side).to_string();
+            label(labels, f, q, &score, 3, (art::HUD_X + 102, y + 36));
+            let who = if side == PLAYER && !self.demo {
+                "YOU"
+            } else {
+                "CPU"
+            };
+            label(labels, f, q, who, 2, (art::HUD_X + 102, y + 70));
         }
-        let (nx, ny, ..) = art::NOTE;
-        f.text(nx + 8, ny + 4, "LAB NOTES", art::BLOOD, None, font);
         for (k, line) in self.message.lines().enumerate() {
-            f.text(nx + 6, ny + 30 + k as i32 * 17, line, art::PEN, None, font);
+            let x = art::HUD_CX + if k % 2 == 0 { -2 } else { 3 };
+            let y = art::MESSAGE_Y + k as i32 * art::MESSAGE_STEP;
+            label(labels, f, q, line, 2, (x, y));
         }
-        f.text(nx + 6, ny + 100, "N new D demo", art::DIM, None, font);
 
         f.blit(&self.cursor, mouse.0, mouse.1, Some(art::TRANSPARENT));
     }
 }
 
-/// Twice-size digits, for the colony counts scrawled on the tape.
-fn big_number(f: &mut Bitmap, x: i32, y: i32, n: usize, c: u8) {
-    let mut tmp = Bitmap::new(32, 16);
-    tmp.text(0, 0, &format!("{n:>2}"), 1, None, Font::vga());
-    for yy in 0..16 {
-        for xx in 0..32 {
-            if tmp.get(xx, yy) == 1 {
-                f.fill_rect(x + xx * 2, y + yy * 2, 2, 2, c);
-            }
-        }
-    }
+/// Draw the black label strip for `text`, centred on `at`, making it the first time.
+fn label(
+    labels: &mut HashMap<(String, usize), Rgba>,
+    f: &mut Bitmap,
+    q: &mut art::Quantizer,
+    text: &str,
+    scale: usize,
+    at: (i32, i32),
+) {
+    let img = labels.entry((text.to_string(), scale)).or_insert_with(|| {
+        let seed = text
+            .bytes()
+            .fold(17u32, |h, b| h.wrapping_mul(31) ^ b as u32);
+        art::dymo::strip(text, art::dymo::BLACK, scale, seed)
+    });
+    let h = (img.px.len() / img.w) as i32;
+    slime::blit(f, q, img, at.0 - img.w as i32 / 2, at.1 - h / 2);
 }
 
 fn hex_outline(f: &mut Bitmap, x: f32, y: f32, r: f32, c: u8, thick: bool) {
@@ -561,6 +586,7 @@ impl DosGame for Sporagon {
         );
         let mut g = Self {
             scene,
+            labels: HashMap::new(),
             frame: Bitmap::new(art::W as u32, art::H as u32),
             cursor,
             board: Board::new(),
@@ -573,7 +599,7 @@ impl DosGame for Sporagon {
             rng: Rng(0x1234_5678_9ABC_DEF1),
             t: 0,
             sfx: None,
-            flicker: 0,
+            flicker: None,
             demo: false,
             message: "",
         };
@@ -628,21 +654,40 @@ impl DosGame for Sporagon {
         dos.wait_vretrace();
         dos.vbe_write_lfb(0, &self.frame.data);
 
-        // The fridge bulb is on its way out: now and then it stutters.
-        if self.flicker == 0 && self.rng.next().is_multiple_of(400) {
-            self.flicker = 4 + self.rng.next() % 10;
+        // The fridge tube is on its way out: now and then it blinks off and strikes again.
+        if self.flicker.is_none() && self.rng.next().is_multiple_of(500) {
+            let k = self.rng.next() as usize % BLINKS.len();
+            self.flicker = Some((BLINKS[k], 0));
         }
-        if self.flicker > 0 {
-            self.flicker -= 1;
-            let level = if self.flicker == 0 {
-                64
-            } else {
-                30 + (self.rng.next() % 30) as u8
+        if let Some((pattern, i)) = self.flicker {
+            let level = match pattern.get(i) {
+                Some(b'#') => 22,
+                Some(b'-') => 46,
+                _ => 64,
             };
             dos.fade_palette(&self.scene.palette, level);
+            // A tick as the tube strikes again, unless a move sound is playing.
+            let strikes = i > 0 && pattern[i - 1] == b'#' && level > 22;
+            if self.sfx.is_none() {
+                if strikes {
+                    dos.sound(90.0);
+                } else {
+                    dos.nosound();
+                }
+            }
+            self.flicker = (i < pattern.len()).then_some((pattern, i + 1));
         }
     }
 }
+
+/// Frames of a failing fluorescent tube: `#` off, `-` struggling, `.` on.
+const BLINKS: &[&[u8]] = &[
+    b"###..",
+    b"##.##-.",
+    b"#.#.###--.",
+    b"####-.....##-",
+    b"#..#....###--",
+];
 
 const KEYS: &[(&str, &str)] = &[
     (
@@ -660,4 +705,25 @@ fn main() -> anyhow::Result<()> {
             .with_bus(BusTiming::PCI)
             .with_keys(KEYS),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_message_fits_the_label_column() {
+        for line in MESSAGES.iter().flat_map(|m| m.lines()) {
+            assert!(
+                art::dymo::width(line, 2) <= art::HUD_W,
+                "{line:?} is too long"
+            );
+        }
+        for name in art::SIDE_NAMES.iter().chain([&art::KEYS, &art::GAME_TITLE]) {
+            assert!(
+                art::dymo::width(name, 2) <= art::HUD_W,
+                "{name:?} is too long"
+            );
+        }
+    }
 }

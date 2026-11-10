@@ -3,6 +3,7 @@
 
 use game_toolkit_dosvideo::prelude::Bitmap;
 
+pub mod dymo;
 mod fridge;
 pub mod slime;
 mod spores;
@@ -28,26 +29,31 @@ pub const INK: u8 = 1;
 pub const GLOW_NEAR: u8 = 2;
 pub const GLOW_FAR: u8 = 3;
 pub const WHITE: u8 = 4;
-pub const PEN: u8 = 5;
-pub const BLOOD: u8 = 6;
-pub const DIM: u8 = 7;
-const FIXED: [[u8; 3]; 8] = [
+const FIXED: [[u8; 3]; 5] = [
     [0, 0, 0],
     [38, 30, 52],
     [120, 255, 90],
     [255, 214, 60],
     [252, 252, 244],
-    [24, 40, 120],
-    [170, 20, 20],
-    [92, 84, 70],
 ];
-const FIRST_FREE: usize = 16;
+const FIRST_FREE: usize = FIXED.len();
 
-/// HUD layout on the right-hand wall: masking tape strips `(x, y, w, h)`.
-pub const TAPE_TITLE: (i32, i32, i32, i32) = (500, 28, 132, 34);
-pub const TAPE_PENI: (i32, i32, i32, i32) = (498, 96, 136, 78);
-pub const TAPE_RHIZO: (i32, i32, i32, i32) = (498, 196, 136, 78);
-pub const NOTE: (i32, i32, i32, i32) = (504, 304, 126, 136);
+/// The fridge bulb, top right.
+const BULB: (f32, f32) = (586.0, 18.0);
+
+/// HUD column on the right-hand wall: left edge, width, and the centre every strip hangs on.
+pub const HUD_X: i32 = 496;
+pub const HUD_W: usize = 140;
+pub const HUD_CX: i32 = HUD_X + HUD_W as i32 / 2;
+/// Strip centres (y) for the title, each side's name, the first message line and the keys.
+pub const TITLE_Y: i32 = 54;
+pub const SIDE_Y: [i32; 2] = [102, 216];
+pub const MESSAGE_Y: i32 = 336;
+pub const MESSAGE_STEP: i32 = 27;
+pub const KEYS_Y: i32 = 442;
+pub const GAME_TITLE: &str = "SPORAGON";
+pub const SIDE_NAMES: [&str; 2] = ["PENICILLIUM", "RHIZOPUS"];
+pub const KEYS: &str = "N NEW D DEMO";
 
 pub fn cell_center(q: i32, r: i32) -> (f32, f32) {
     (
@@ -131,6 +137,21 @@ pub(crate) fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
 
 pub(crate) fn scale(c: [f32; 3], k: f32) -> [f32; 3] {
     [c[0] * k, c[1] * k, c[2] * k]
+}
+
+/// Direction to the bulb: top right, in front of the tray (screen space, y down).
+const LIGHT: [f32; 3] = [0.45, -0.6, 0.66];
+
+/// Lambert term for normal `n` (not clamped).
+pub(crate) fn facing(n: [f32; 3]) -> f32 {
+    n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]
+}
+
+/// Blinn term for normal `n` with the viewer straight above (not clamped).
+pub(crate) fn glint(n: [f32; 3]) -> f32 {
+    // |LIGHT + (0, 0, 1)|
+    const HALF_LEN: f32 = 1.8216;
+    (facing(n) + n[2]) / HALF_LEN
 }
 
 pub(crate) fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
@@ -243,7 +264,18 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
             })
             .collect()
     });
-    let bg = paint_fridge(centers);
+    let mut bg = paint_fridge(centers);
+    // The labels that never change are stuck on the wall for good.
+    let tapes = [dymo::GREEN, dymo::GREY];
+    for (text, tape, y) in [
+        (GAME_TITLE, dymo::RED, TITLE_Y),
+        (KEYS, dymo::BLACK, KEYS_Y),
+    ]
+    .into_iter()
+    .chain((0..2).map(|s| (SIDE_NAMES[s], tapes[s], SIDE_Y[s])))
+    {
+        dymo::bake(&mut bg, W, &dymo::strip(text, tape, 2, y as u32), HUD_CX, y);
+    }
     let puddles: [Vec<Vec<Rgba>>; 2] = [0usize, 1].map(|side| {
         (0..VARIANTS as u32)
             .map(|v| {
@@ -294,6 +326,12 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
         .step_by(3)
         .map(|c| c.map(|v| v.clamp(0.0, 255.0) as u8))
         .collect();
+    // The bulb's rusty cage is small but catches the eye: weight it so it keeps its browns.
+    for y in 0..40 {
+        for x in (BULB.0 as usize - 24)..(BULB.0 as usize + 24) {
+            samples.extend([bg[y * W + x].map(|v| v.clamp(0.0, 255.0) as u8); 6]);
+        }
+    }
     for side in &sprites {
         for variant in side {
             for img in variant.iter().skip(STAGES - 3) {
@@ -322,6 +360,14 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
                 let c = mix(under, [p[0], p[1], p[2]], p[3]);
                 samples.push(c.map(|v| v.clamp(0.0, 255.0) as u8));
             }
+        }
+    }
+    // Score, tag and message strips are made at run time: sample black tape over the wall.
+    let sample = dymo::strip("0123456789 YOUR MOVE", dymo::BLACK, 3, 0);
+    for p in sample.px.iter().filter(|p| p[3] > 0.05) {
+        for under in [[214.0, 204.0, 168.0], [150.0, 138.0, 100.0]] {
+            let c = mix(under, [p[0], p[1], p[2]], p[3]);
+            samples.push(c.map(|v| v.clamp(0.0, 255.0) as u8));
         }
     }
     let mut palette = [[0u8; 3]; 256];
@@ -460,9 +506,9 @@ mod tests {
     }
 
     #[test]
-    fn board_fits_left_of_the_notes() {
+    fn board_fits_left_of_the_labels() {
         let (x, _) = cell_center(4, 0);
-        assert!(x + R < TAPE_PENI.0 as f32);
+        assert!(x + R < HUD_X as f32);
         let (_, y) = cell_center(0, 4);
         assert!(y + R < H as f32);
     }

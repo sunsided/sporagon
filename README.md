@@ -4,7 +4,7 @@ A Hexxagon-style board game in the back of a forgotten fridge. Your Penicillium 
 computer's Rhizopus for a cracked egg tray, in 640x480 with 256 colors on an emulated VESA SVGA
 card ([game-toolkit-dosvideo](https://github.com/sunsided/game-toolkit-dosvideo)).
 
-![SPORAGON through the VGA monitor CRT filter: two mould colonies in each corner of a hexagonal egg tray, masking-tape score labels and a damp sticky note on a yellowed fridge wall](docs/screenshot.jpg)
+![SPORAGON through the VGA monitor CRT filter: two mould colonies in each corner of a hexagonal egg tray, embossed label strips with names, scores and messages on a yellowed fridge wall](docs/screenshot.jpg)
 
 ## Playing
 
@@ -49,6 +49,8 @@ prepared for VGA. Some details:
   reaching into the victim's cup.
 - **Fridge**: a dimpled egg tray lit by the bulb, condensation drops, brown drips, black
   mildew in the corners, and a bulb that flickers through the palette now and then.
+- **Labels**: embossed label-maker strips stuck crooked on the wall, each with its shadow; a
+  hand-drawn 5x7 font punched into coloured plastic, shown at two or three times its size.
 
 The frame is composed in system memory and copied to the linear framebuffer each vertical
 retrace. Moves and takeovers play PC-speaker sweeps. The computer searches three moves deep
@@ -57,7 +59,8 @@ with alpha-beta pruning.
 ## Development
 
 Code: `src/board.rs` (rules, AI), `src/main.rs` (game loop, animation, screen),
-`src/art.rs` (palette and layout) with `src/art/` (`spores.rs` the moulds, `slime.rs`, `fridge.rs`).
+`src/art.rs` (palette and layout) with `src/art/` (`spores.rs` the moulds, `slime.rs`, `fridge.rs`,
+`dymo.rs` the labels).
 
 ```sh
 task test       # rules, AI self-play, layout
@@ -68,3 +71,4 @@ task screenshot # refresh docs/screenshot.jpg (needs a display)
 ## License
 
 EUPL-1.2
+

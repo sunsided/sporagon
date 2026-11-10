@@ -144,14 +144,7 @@ impl Board {
     }
 
     pub fn has_moves(&self, side: Side) -> bool {
-        let g = geometry();
-        self.cells.iter().enumerate().any(|(i, &c)| {
-            c == Cell::Mold(side)
-                && g.near[i]
-                    .iter()
-                    .chain(&g.far[i])
-                    .any(|&j| self.cells[j] == Cell::Empty)
-        })
+        !self.moves(side).is_empty()
     }
 
     /// Whether `from -> to` is legal for `side`, and if so as which move.

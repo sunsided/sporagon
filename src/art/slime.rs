@@ -2,7 +2,7 @@
 //! colonies, the bridges between neighbouring colonies, and the pseudopods and globs that carry
 //! a colony to its next cup.
 
-use super::{Quantizer, Rgba, fbm, hash, mix, scale, smooth};
+use super::{Quantizer, Rgba, facing, fbm, glint, hash, mix, scale, smooth};
 use game_toolkit_dosvideo::prelude::Bitmap;
 use std::f32::consts::PI;
 
@@ -43,8 +43,8 @@ pub fn shade(balls: &[Ball], side: usize, x: f32, y: f32) -> Option<([f32; 3], f
     let l = (nx * nx + ny * ny + nz * nz).sqrt();
     let (nx, ny, nz) = (nx / l, ny / l, nz / l);
     // Light from the bulb, top right; viewer straight above.
-    let diffuse = (nx * 0.45 - ny * 0.6 + nz * 0.66).max(0.0);
-    let half = (nx * 0.45 - ny * 0.6 + nz * 1.66) / 1.82;
+    let diffuse = facing([nx, ny, nz]).max(0.0);
+    let half = glint([nx, ny, nz]);
     // Sharp: only slopes facing the bulb glint, flat tops stay clear.
     let spec = half.max(0.0).powi(70);
     let (deep, light) = BODY[side];

@@ -13,7 +13,7 @@ fn glisten(img: &mut Rgba, seed: u32, rc: f32, g: f32) {
             let p = img.px[y * SPR + x];
             if nr < 0.95 && p[3] > 0.9 {
                 let h = (1.0 - nr * nr).max(0.0).sqrt();
-                let half = (dx * 0.8 * 0.45 - dy * 0.8 * 0.6 + h * 1.66) / 1.79;
+                let half = glint([dx * 0.8, dy * 0.8, h]);
                 let sheen = half.max(0.0).powi(40)
                     * 0.8
                     * smooth(0.3, 0.7, vnoise(x as f32 / 3.0, y as f32 / 3.0, seed + 40));
@@ -42,8 +42,22 @@ fn dome(dx: f32, dy: f32, nr: f32) -> f32 {
     let h = (1.0 - nr * nr).max(0.0).sqrt();
     let (nx, ny, nz) = (dx * 0.6, dy * 0.6, h + 0.2);
     let l = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-4);
-    let d = (nx * 0.45 - ny * 0.6 + nz * 0.66) / l;
+    let d = facing([nx, ny, nz]) / l;
     0.72 + 0.4 * d.max(0.0)
+}
+
+// Penicillium, shared by colonies and the necks between them so the two meet without a seam.
+const VELVET: [f32; 3] = [52.0, 104.0, 90.0];
+const VELVET2: [f32; 3] = [82.0, 132.0, 108.0];
+const RIM: [f32; 3] = [158.0, 196.0, 160.0];
+const MARGIN: [f32; 3] = [238.0, 240.0, 228.0];
+
+/// Rhizopus cotton at `(x, y)`, `nr` from the axis: `(density, colour)` before lighting.
+fn cotton(x: usize, y: usize, seed: u32, nr: f32) -> (f32, [f32; 3]) {
+    let fluff = fbm(x as f32 / 2.3, y as f32 / 2.3, seed + 5, 3);
+    let dens = (1.0 - nr * nr).max(0.0) * (0.45 + 0.9 * fluff);
+    let grey = lerp(150.0, 246.0, fluff.powf(0.8));
+    (dens, [grey, grey * 0.99, grey * 0.94])
 }
 
 /// Penicillium: velvety blue-green with concentric zones, radial furrows, a white advancing
@@ -66,19 +80,15 @@ pub(super) fn penicillium(seed: u32, g: f32) -> Rgba {
             let fine = fbm(x as f32 / 1.7, y as f32 / 1.7, seed + 11, 2);
             if nr < 1.0 {
                 let core = [118.0, 132.0, 104.0];
-                let velvet = [52.0, 104.0, 90.0];
-                let velvet2 = [82.0, 132.0, 108.0];
-                let rim = [158.0, 196.0, 160.0];
-                let margin = [238.0, 240.0, 228.0];
                 let zone = (nr * 7.0 + wob * 2.0).sin() * 0.5 + 0.5;
                 let mut col = if nr < 0.3 {
-                    mix(core, velvet, nr / 0.3)
+                    mix(core, VELVET, nr / 0.3)
                 } else if nr < 0.72 {
-                    mix(velvet, velvet2, zone)
+                    mix(VELVET, VELVET2, zone)
                 } else if nr < 0.88 {
-                    mix(velvet2, rim, (nr - 0.72) / 0.16)
+                    mix(VELVET2, RIM, (nr - 0.72) / 0.16)
                 } else {
-                    mix(rim, margin, (nr - 0.88) / 0.12)
+                    mix(RIM, MARGIN, (nr - 0.88) / 0.12)
                 };
                 // Dusty bloom of conidia.
                 let dust = smooth(0.55, 0.8, fbm(x as f32 / 4.0, y as f32 / 4.0, seed + 13, 3));
@@ -88,7 +98,7 @@ pub(super) fn penicillium(seed: u32, g: f32) -> Rgba {
                     dust * 0.5 * (nr < 0.85) as u8 as f32,
                 );
                 // Young colonies are still mostly white mycelium.
-                col = mix(col, margin, (1.0 - g * 1.4).max(0.0) * (1.0 - nr * 0.3));
+                col = mix(col, MARGIN, (1.0 - g * 1.4).max(0.0) * (1.0 - nr * 0.3));
                 let furrow = ((th * furrows + wob * 4.0).sin() * 0.5 + 0.5).powi(6);
                 let k = dome(dx / edge, dy / edge, nr)
                     * (1.0 - 0.25 * furrow * (nr * 2.0).min(1.0) * g)
@@ -145,11 +155,8 @@ pub(super) fn rhizopus(seed: u32, g: f32) -> Rgba {
             let th = dy.atan2(dx);
             let wob = fbm(th.cos() * 1.6 + 9.0, th.sin() * 1.6 + 9.0, seed, 3);
             let nr = r / (rc * (0.85 + 0.3 * wob));
-            let fluff = fbm(x as f32 / 2.3, y as f32 / 2.3, seed + 5, 3);
-            let dens = (1.0 - nr * nr).max(0.0) * (0.45 + 0.9 * fluff);
+            let (dens, mut col) = cotton(x, y, seed, nr);
             if dens > 0.0 {
-                let grey = lerp(150.0, 246.0, fluff.powf(0.8));
-                let mut col = [grey, grey * 0.99, grey * 0.94];
                 // Old centre: grey from spores that already fell.
                 col = mix(col, [96.0, 94.0, 90.0], (1.0 - nr * 1.6).max(0.0) * g * 0.8);
                 col = scale(col, dome(dx / rc, dy / rc, nr.min(1.0)));
@@ -286,19 +293,15 @@ pub(super) fn penicillium_neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, 
                 n.l.abs() / n.w + 0.16 * (fbm(x as f32 / 2.5, y as f32 / 2.5, seed + 21, 2) - 0.5);
             let fine = fbm(x as f32 / 1.7, y as f32 / 1.7, seed + 11, 2);
             if nr < 1.0 {
-                let velvet = [56.0, 100.0, 88.0];
-                let velvet2 = [88.0, 128.0, 106.0];
-                let rim = [158.0, 194.0, 160.0];
-                let margin = [238.0, 240.0, 228.0];
                 let layer = if nr < 0.78 { &mut img } else { &mut rim_img };
                 // Powdery velvet in patches, no pattern.
                 let patch = fbm(x as f32 / 5.0, y as f32 / 5.0, seed + 2, 3);
-                let mut col = mix(velvet, velvet2, smooth(0.3, 0.7, patch));
+                let mut col = mix(VELVET, VELVET2, smooth(0.3, 0.7, patch));
                 // The white margin is ragged and wider where the edge bulges.
                 let m0 = 0.66 + 0.12 * fbm(n.t / 4.0, n.l.signum(), seed + 9, 2);
                 if nr > m0 {
-                    col = mix(col, rim, smooth(m0, m0 + 0.12, nr));
-                    col = mix(col, margin, smooth(m0 + 0.12, 1.0, nr));
+                    col = mix(col, RIM, smooth(m0, m0 + 0.12, nr));
+                    col = mix(col, MARGIN, smooth(m0 + 0.12, 1.0, nr));
                 }
                 let dust = smooth(0.5, 0.8, fbm(x as f32 / 3.5, y as f32 / 3.5, seed + 13, 3));
                 col = mix(
@@ -339,15 +342,10 @@ pub(super) fn rhizopus_neck(v: (f32, f32), seed: u32, size: usize) -> (Rgba, Rgb
         for x in 0..size {
             let n = neck.at(x, y, seed);
             let nr = n.l.abs() / n.w;
-            let fluff = fbm(x as f32 / 2.3, y as f32 / 2.3, seed + 5, 3);
-            let dens = (1.0 - nr * nr).max(0.0) * (0.45 + 0.9 * fluff);
+            let (dens, col) = cotton(x, y, seed, nr);
             if dens > 0.0 && n.fade > 0.0 {
-                let grey = lerp(150.0, 246.0, fluff.powf(0.8));
                 let s = n.l.signum() * nr.min(1.0);
-                let col = scale(
-                    [grey, grey * 0.99, grey * 0.94],
-                    dome(neck.p.0 * s, neck.p.1 * s, nr.min(1.0)),
-                );
+                let col = scale(col, dome(neck.p.0 * s, neck.p.1 * s, nr.min(1.0)));
                 img.over(x as i32, y as i32, col, smooth(0.08, 0.4, dens) * n.fade);
             }
         }

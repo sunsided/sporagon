@@ -1,4 +1,4 @@
-//! The rundown fridge: back wall, egg tray, notes on the wall, bulb and grime.
+//! The rundown fridge: back wall, egg tray, bulb and grime.
 
 use super::*;
 
@@ -64,7 +64,7 @@ fn tray_height(x: f32, y: f32, centers: &[(f32, f32, bool)]) -> Option<(f32, usi
 
 pub(super) fn paint_fridge(centers: &[(f32, f32, bool)]) -> Vec<[f32; 3]> {
     let mut rng = Rng(0x5EED_F00D_CAFE_1234);
-    let bulb = (586.0f32, 18.0f32);
+    let bulb = BULB;
     // Brown drips running down the back wall.
     let drips: Vec<(f32, f32, f32, f32)> = (0..11)
         .map(|_| {
@@ -86,7 +86,6 @@ pub(super) fn paint_fridge(centers: &[(f32, f32, bool)]) -> Vec<[f32; 3]> {
         BY + 215.0,
         2.6,
     );
-    let tapes = [TAPE_TITLE, TAPE_PENI, TAPE_RHIZO];
     // Cracks spreading from the knocked-out cups.
     let mut cracks = vec![false; W * H];
     for &(cx, cy, hole) in centers {
@@ -118,7 +117,6 @@ pub(super) fn paint_fridge(centers: &[(f32, f32, bool)]) -> Vec<[f32; 3]> {
                 &drips,
                 &wall_drops,
                 &tray_drops,
-                &tapes,
                 centers,
                 &cracks,
             );
@@ -135,7 +133,6 @@ fn fridge_pixel(
     drips: &[(f32, f32, f32, f32)],
     wall_drops: &[Drop],
     tray_drops: &[Drop],
-    tapes: &[(i32, i32, i32, i32)],
     centers: &[(f32, f32, bool)],
     cracks: &[bool],
 ) -> [f32; 3] {
@@ -143,21 +140,18 @@ fn fridge_pixel(
     let light = 0.62 + 0.7 * (-dist_bulb / 380.0).exp();
     let vignette = 1.0 - 0.35 * (((fx - 320.0) / 340.0).powi(2) + ((fy - 240.0) / 280.0).powi(2));
 
-    // Tray first: it sits in front of everything but the notes.
-    if let Some((z, ci)) = tray_height(fx, fy, centers) {
+    // Tray first: it sits in front of everything but the notes. Through a knocked-out cup
+    // the fridge wall behind shows.
+    let tray = tray_height(fx, fy, centers);
+    let through = tray.and_then(|(_, ci)| hole_depth(fx, fy, centers[ci]));
+    if let Some((z, ci)) = tray
+        && through.is_none()
+    {
         let (cx, cy, hole) = centers[ci];
         let h = hex_norm(fx - cx, fy - cy);
-        if hole {
-            let jag = 0.78 + 0.16 * fbm(fx / 5.0, fy / 5.0, 77, 2);
-            if h < jag {
-                // Broken out: the dark gap under the tray, a glint of wet shelf.
-                let depth = 1.0 - h / jag;
-                let wet = fbm(fx / 9.0, fy / 9.0, 78, 3);
-                return scale([30.0, 26.0, 20.0], (0.35 + 0.5 * wet) * (1.0 - 0.6 * depth));
-            }
-            if h < jag + 0.06 {
-                return scale([246.0, 242.0, 226.0], light * 1.05);
-            }
+        if hole && h < hole_jag(fx, fy) + 0.07 {
+            // The snapped-off plastic edge, bright so the hole reads at a glance.
+            return scale([250.0, 246.0, 230.0], light.max(1.0) * 1.08);
         }
         let e = 0.8;
         let zx = tray_height(fx + e, fy, centers).map_or(z - 4.0, |t| t.0) - z;
@@ -165,13 +159,8 @@ fn fridge_pixel(
         let (nx, ny, nz) = (-zx / e, -zy / e, 1.0);
         let l = (nx * nx + ny * ny + nz * nz).sqrt();
         let (nx, ny, nz) = (nx / l, ny / l, nz / l);
-        let diffuse = (nx * 0.45 - ny * 0.6 + nz * 0.66).max(0.0);
-        // Blinn specular, viewer straight above.
-        let (hx, hy, hz) = (0.45, -0.6, 1.66);
-        let hl = hx * hx + hy * hy + hz * hz;
-        let spec = ((nx * hx + ny * hy + nz * hz) / hl.sqrt())
-            .max(0.0)
-            .powi(40);
+        let diffuse = facing([nx, ny, nz]).max(0.0);
+        let spec = glint([nx, ny, nz]).max(0.0).powi(40);
         let mut col = [228.0, 222.0, 200.0];
         // Grime settles in the bottom of the cups.
         let settle = ((1.0 - h).max(0.0)).powi(2) * fbm(fx / 7.0, fy / 7.0, 21, 3);
@@ -189,40 +178,6 @@ fn fridge_pixel(
         }
         if let Some(c) = tray_drops.iter().find_map(|d| apply_drop(col, d, fx, fy)) {
             col = c;
-        }
-        return col;
-    }
-
-    // Notes on the wall.
-    for (i, &(tx, ty, tw, th)) in tapes.iter().enumerate() {
-        let ragged = hash(fy as i32 / 2, i as i32, 5) * 4.0;
-        if fx >= tx as f32 + ragged
-            && fx < (tx + tw) as f32 - ragged * 0.7
-            && fy >= ty as f32
-            && fy < (ty + th) as f32
-        {
-            let fiber = fbm(fx / 1.5, fy / 6.0, 41, 2);
-            let col = mix(
-                [232.0, 214.0, 162.0],
-                [200.0, 178.0, 120.0],
-                fiber * 0.6 + fbm(fx / 20.0, fy / 20.0, 42, 2) * 0.4,
-            );
-            return scale(col, light.min(1.1) * 0.95);
-        }
-    }
-    let (nx, ny, nw, nh) = NOTE;
-    if fx >= nx as f32 && fx < (nx + nw) as f32 && fy >= ny as f32 && fy < (ny + nh) as f32 {
-        // A sticky note gone soft and wavy from the damp.
-        let wave = (fy / 7.0).sin() * 0.04 + fbm(fx / 12.0, fy / 12.0, 51, 3) * 0.12;
-        let curl = smooth(0.75, 1.0, (fy - ny as f32) / nh as f32) * 0.25;
-        let mut col = scale([238.0, 226.0, 128.0], light.min(1.1) * (0.9 + wave - curl));
-        if fy < (ny + 22) as f32 {
-            col = scale(col, 0.9);
-        }
-        // A water stain ring.
-        let ring = (((fx - 590.0).powi(2) + (fy - 420.0).powi(2)).sqrt() - 26.0).abs();
-        if ring < 2.0 {
-            col = mix(col, [170.0, 140.0, 60.0], 0.5);
         }
         return col;
     }
@@ -289,15 +244,29 @@ fn fridge_pixel(
     }
     col = scale(col, light * vignette.max(0.35));
     // Drop shadow of the tray and the notes.
-    let shadowed = tray_height(fx - 9.0, fy - 12.0, centers).is_some()
-        || tapes.iter().chain([&NOTE]).any(|&(x, y, w, h)| {
-            fx - 4.0 >= x as f32
-                && fx - 4.0 < (x + w) as f32
-                && fy - 5.0 >= y as f32
-                && fy - 5.0 < (y + h) as f32
-        });
-    if shadowed {
+    let casts = |sx: f32, sy: f32| {
+        tray_height(sx, sy, centers)
+            .is_some_and(|(_, ci)| hole_depth(sx, sy, centers[ci]).is_none())
+    };
+    // Down in a hole the tray is close above the wall: soften its shadow edge.
+    let shade_in_hole = through.map(|_| {
+        let taps = [
+            (0.0, 0.0),
+            (2.5, 1.0),
+            (-1.0, 2.5),
+            (-2.5, -1.0),
+            (1.0, -2.5),
+        ];
+        taps.iter()
+            .filter(|(ox, oy)| casts(fx - 9.0 + ox, fy - 12.0 + oy))
+            .count() as f32
+            / taps.len() as f32
+    });
+    if shade_in_hole.is_none() && casts(fx - 9.0, fy - 12.0) {
         col = scale(col, 0.58);
+    }
+    if let Some(k) = shade_in_hole {
+        col = scale(col, 1.0 - 0.45 * k);
     }
     // The thermostat knob, stuck on 7 since 1987.
     let (kx, ky) = (fx - 52.0, fy - 52.0);
@@ -348,5 +317,24 @@ fn fridge_pixel(
     if let Some(c) = wall_drops.iter().find_map(|d| apply_drop(col, d, fx, fy)) {
         col = c;
     }
+    if let Some(d) = through {
+        // Seen down through the tray: dimmer, darkest right under the broken edge, with a
+        // thin black line where the plastic's cross-section is in its own shadow.
+        col = scale(col, 0.6 * (0.5 + 0.5 * smooth(0.0, 0.14, d)));
+        if d < 0.025 {
+            col = scale(col, 0.35);
+        }
+    }
     col
+}
+
+/// The ragged outline of a knocked-out cup, in hexagonal distance from its centre.
+fn hole_jag(x: f32, y: f32) -> f32 {
+    0.78 + 0.16 * fbm(x / 5.0, y / 5.0, 77, 2)
+}
+
+/// How far inside the opening of a knocked-out cup `(x, y)` lies, if it does.
+fn hole_depth(x: f32, y: f32, (cx, cy, hole): (f32, f32, bool)) -> Option<f32> {
+    let d = hole_jag(x, y) - hex_norm(x - cx, y - cy);
+    (hole && d > 0.0).then_some(d)
 }

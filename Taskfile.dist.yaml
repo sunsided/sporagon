@@ -40,6 +40,9 @@ tasks:
 
   screenshot:
     desc: Capture docs/screenshot.jpg through the VGA monitor CRT filter (needs a display)
+    preconditions:
+      - sh: command -v convert
+        msg: The screenshot task needs ImageMagick (convert) to write the JPEG.
     cmds:
       - DOSVIDEO_WINDOW_SHOT=target/screenshot.png DOSVIDEO_WINDOW_SHOT_FRAMES={{.SHOT_FRAMES}} DOSVIDEO_CRT=3 cargo run --release
       - convert target/screenshot.png -quality 88 docs/screenshot.jpg
