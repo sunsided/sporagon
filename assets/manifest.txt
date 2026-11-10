@@ -1,0 +1,2 @@
+# The asset list the browser build preloads. SPORAGON paints everything at startup, so
+# there is nothing to list; the file only spares the browser a 404.

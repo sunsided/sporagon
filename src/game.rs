@@ -316,6 +316,8 @@ impl DosGame for Sporagon {
             message: Message::Growing,
         };
         game.new_game();
+        // Painting the scene took the longest; the page can stop saying it is loading.
+        crate::host::loaded();
         Ok(game)
     }
 

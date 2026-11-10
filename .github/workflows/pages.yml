@@ -42,9 +42,12 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
+      # Hashed file names here, unlike the release zip (whose stable names the games site
+      # imports): Pages lets browsers cache for 10 minutes, and a cached sporagon.js with a
+      # newer sporagon_bg.wasm fails to link and leaves the page black.
       - name: Build the game for the web
         run: |
-          trunk build --release --locked
+          trunk build --release --locked --filehash true
           rm -f dist/.trunk-lock
 
       - name: Upload artifact

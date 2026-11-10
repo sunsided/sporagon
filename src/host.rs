@@ -10,6 +10,22 @@ pub const CANVAS: &str = "sporagon";
 #[cfg(target_arch = "wasm32")]
 const RESTART: &str = "sporagon:restart";
 
+/// The scene is painted and the game is about to show its first frame: take down the page's
+/// loading notice (`#loading` in index.html), if it has one.
+#[cfg(target_arch = "wasm32")]
+pub fn loaded() {
+    if let Some(notice) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("loading"))
+    {
+        notice.remove();
+    }
+}
+
+/// Natively there is no page to tidy up.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn loaded() {}
+
 /// Whether the host asked for a new game since the last call. Call it once per frame.
 #[cfg(target_arch = "wasm32")]
 pub fn restart_requested() -> bool {
