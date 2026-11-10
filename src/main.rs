@@ -4,7 +4,7 @@
 mod art;
 mod board;
 
-use art::{Rng, SPR, STAGES, Scene};
+use art::{BRIDGE, Rng, SPR, STAGES, Scene, slime};
 use board::{Board, Cell, Move, Side, geometry};
 use game_toolkit_dosvideo::prelude::*;
 
@@ -12,6 +12,35 @@ const PLAYER: Side = Side::Peni;
 const AI_DEPTH: u32 = 3;
 /// Frames a colony takes to grow in.
 const GROW: u64 = 26;
+/// Frames a pseudopod takes to reach the next cup.
+const CREEP: u64 = 16;
+/// Frames a glob takes to gather, snap off and land two cups away.
+const LEAP: u64 = 28;
+/// Frames a colony takes to shrink away after leaping.
+const VANISH: u64 = 12;
+
+/// Slime on its way somewhere: a pseudopod (`leap: false`) or a flying glob.
+#[derive(Clone, Copy)]
+struct Ooze {
+    from: (f32, f32),
+    to: (f32, f32),
+    side: Side,
+    start: u64,
+    len: u64,
+    /// Drawn until `start + life`, so the slime stays until the new colony covers it.
+    life: u64,
+    leap: bool,
+    seed: u32,
+}
+
+/// A colony shrinking out of the cup it leapt from.
+#[derive(Clone, Copy)]
+struct Vanish {
+    cell: usize,
+    side: Side,
+    variant: usize,
+    start: u64,
+}
 
 #[derive(Clone, Copy)]
 struct Anim {
@@ -26,7 +55,8 @@ enum Phase {
     Player,
     /// Wait for the animations, then it is `Side`'s turn.
     Growing(Side),
-    Thinking(u32),
+    /// `Side`'s computer player waits a moment, then moves.
+    Thinking(Side, u32),
     Over,
 }
 
@@ -49,11 +79,20 @@ struct Sporagon {
     phase: Phase,
     selected: Option<usize>,
     anims: Vec<Anim>,
+    oozes: Vec<Ooze>,
+    vanishing: Vec<Vanish>,
     rng: Rng,
     t: u64,
     sfx: Option<Sfx>,
     flicker: u32,
+    /// The computer plays both sides.
+    demo: bool,
     message: &'static str,
+}
+
+fn center(i: usize) -> (f32, f32) {
+    let (q, r) = geometry().coords[i];
+    art::cell_center(q, r)
 }
 
 fn centers() -> Vec<(f32, f32, bool)> {
@@ -76,6 +115,8 @@ impl Sporagon {
             .map(|_| self.rng.next() as usize % art::VARIANTS)
             .collect();
         self.selected = None;
+        self.oozes.clear();
+        self.vanishing.clear();
         self.anims = (0..self.board.cells.len())
             .filter(|&i| matches!(self.board.cells[i], Cell::Mold(_)))
             .map(|cell| Anim {
@@ -94,27 +135,84 @@ impl Sporagon {
     }
 
     fn play(&mut self, side: Side, mv: Move) {
+        let t = self.t;
+        let old_variant = self.variant[mv.from];
         let converted = self.board.apply(side, mv);
         self.variant[mv.to] = self.rng.next() as usize % art::VARIANTS;
+        let (from, to) = (center(mv.from), center(mv.to));
+        let seed = self.rng.next();
+        let arrive = if mv.jump {
+            self.vanishing.push(Vanish {
+                cell: mv.from,
+                side,
+                variant: old_variant,
+                start: t + 6,
+            });
+            self.oozes.push(Ooze {
+                from,
+                to,
+                side,
+                start: t,
+                len: LEAP,
+                life: LEAP + 2,
+                leap: true,
+                seed,
+            });
+            t + LEAP - 3
+        } else {
+            self.oozes.push(Ooze {
+                from,
+                to,
+                side,
+                start: t,
+                len: CREEP,
+                life: CREEP + GROW,
+                leap: false,
+                seed,
+            });
+            t + CREEP - 4
+        };
         self.anims.push(Anim {
             cell: mv.to,
-            start: self.t,
+            start: arrive,
             under: None,
         });
+        // From the new colony, a pseudopod into every neighbour it takes over.
         for (k, &c) in converted.iter().enumerate() {
+            let start = arrive + 4 + k as u64 * 3;
+            self.oozes.push(Ooze {
+                from: to,
+                to: center(c),
+                side,
+                start,
+                len: 10,
+                life: 10 + GROW,
+                leap: false,
+                seed,
+            });
             self.anims.push(Anim {
                 cell: c,
-                start: self.t + 6 + k as u64 * 3,
+                start: start + 7,
                 under: Some(side.other()),
             });
         }
         self.sfx = Some(if converted.is_empty() {
-            Sfx {
-                from: if mv.jump { 900.0 } else { 300.0 },
-                to: if mv.jump { 200.0 } else { 520.0 },
-                len: 8,
-                t: 0,
-                wobble: false,
+            if mv.jump {
+                Sfx {
+                    from: 250.0,
+                    to: 900.0,
+                    len: 14,
+                    t: 0,
+                    wobble: false,
+                }
+            } else {
+                Sfx {
+                    from: 90.0,
+                    to: 170.0,
+                    len: CREEP as u32,
+                    t: 0,
+                    wobble: true,
+                }
             }
         } else {
             Sfx {
@@ -154,12 +252,16 @@ impl Sporagon {
                 wobble: true,
             });
             self.phase = Phase::Over;
-        } else if side == PLAYER {
+        } else if side == PLAYER && !self.demo {
             self.message = "Your move.\nPick a colony,\nthen a cup.";
             self.phase = Phase::Player;
         } else {
-            self.message = "Rhizopus is\nspreading...";
-            self.phase = Phase::Thinking(35);
+            self.message = if side == PLAYER {
+                "Penicillium is\nspreading..."
+            } else {
+                "Rhizopus is\nspreading..."
+            };
+            self.phase = Phase::Thinking(side, 35);
         }
     }
 
@@ -207,7 +309,6 @@ impl Sporagon {
         let f = &mut self.frame;
         f.data.copy_from_slice(&self.scene.background.data);
         let g = geometry();
-        let center = |i: usize| art::cell_center(g.coords[i].0, g.coords[i].1);
 
         // Move hints under the colonies.
         if let Some(sel) = self.selected {
@@ -222,24 +323,130 @@ impl Sporagon {
             }
         }
 
+        // What each cup shows: `(cell, side, variant, stage)`, bottom layer first.
+        let t = self.t;
+        let mut shown = Vec::new();
         for i in 0..self.board.cells.len() {
             let Cell::Mold(side) = self.board.cells[i] else {
                 continue;
             };
+            let anim = self.anims.iter().rev().find(|a| a.cell == i);
+            if let Some(under) = anim.and_then(|a| a.under) {
+                shown.push((i, under, self.variant[i], STAGES - 1));
+            }
+            if anim.is_none_or(|a| t >= a.start) {
+                let stage = anim.map_or(STAGES - 1, |a| {
+                    ((t - a.start) as usize * STAGES / GROW as usize).min(STAGES - 1)
+                });
+                shown.push((i, side, self.variant[i], stage));
+            }
+        }
+        for v in &self.vanishing {
+            let gone = t.saturating_sub(v.start) as usize * STAGES / VANISH as usize;
+            if gone < STAGES {
+                shown.push((v.cell, v.side, v.variant, STAGES - 1 - gone));
+            }
+        }
+
+        let q = &mut self.scene.quant;
+        for &(i, side, variant, stage) in &shown {
+            let (x, y) = center(i);
+            let p = &self.scene.puddles[side as usize][variant][stage];
+            slime::blit(
+                f,
+                q,
+                p,
+                x as i32 - SPR as i32 / 2,
+                y as i32 - SPR as i32 / 2,
+            );
+        }
+        // Neighbours showing the same kind right now, `(cell, neighbour, direction, side)`:
+        // joined by slime under the colonies and by mould over them. Goes by what is on
+        // screen, not the board, so joins last until a takeover actually reaches them.
+        let shows = |i: usize| -> Option<Side> {
+            if let Some(v) = self.vanishing.iter().find(|v| v.cell == i) {
+                return (t < v.start).then_some(v.side);
+            }
+            let Cell::Mold(side) = self.board.cells[i] else {
+                return None;
+            };
+            match self.anims.iter().rev().find(|a| a.cell == i) {
+                None => Some(side),
+                // The old colony holds until the new one has half overgrown it.
+                Some(a) => a.under.filter(|_| t < a.start + GROW / 2),
+            }
+        };
+        let mut joins = Vec::new();
+        for i in 0..self.board.cells.len() {
+            let Some(side) = shows(i) else {
+                continue;
+            };
+            let (q0, r0) = g.coords[i];
+            for (d, (dq, dr)) in art::BRIDGE_DIRS.iter().enumerate() {
+                if let Some(j) = board::index_of(q0 + dq, r0 + dr)
+                    && shows(j) == Some(side)
+                {
+                    joins.push((i, j, d, side));
+                }
+            }
+        }
+        for &(i, j, d, side) in &joins {
+            let ((x0, y0), (x1, y1)) = (center(i), center(j));
+            let img = &self.scene.bridges[side as usize][d][(i * 7 + j * 3) % art::BRIDGE_VARIANTS];
+            let h = BRIDGE as i32 / 2;
+            slime::blit(
+                f,
+                q,
+                img,
+                ((x0 + x1) / 2.0) as i32 - h,
+                ((y0 + y1) / 2.0) as i32 - h,
+            );
+        }
+        for o in self.oozes.iter().filter(|o| !o.leap && t >= o.start) {
+            let p = art::smooth(0.0, 1.0, (t - o.start) as f32 / o.len as f32);
+            slime::draw(
+                f,
+                q,
+                &slime::creep(o.from, o.to, p, t as f32),
+                o.side as usize,
+            );
+        }
+        for &(i, side, variant, stage) in &shown {
             let (x, y) = center(i);
             let (sx, sy) = (x as i32 - SPR as i32 / 2, y as i32 - SPR as i32 / 2);
-            let sprites = |s: Side| &self.scene.colonies[s as usize][self.variant[i]];
-            let anim = self.anims.iter().rev().find(|a| a.cell == i);
-            let stage = anim.map_or(STAGES - 1, |a| {
-                let p = self.t.saturating_sub(a.start) as usize * STAGES / GROW as usize;
-                p.min(STAGES - 1)
-            });
-            if let Some(under) = anim.and_then(|a| a.under) {
-                f.blit(&sprites(under)[STAGES - 1], sx, sy, Some(art::TRANSPARENT));
+            f.blit(
+                &self.scene.colonies[side as usize][variant][stage],
+                sx,
+                sy,
+                Some(art::TRANSPARENT),
+            );
+        }
+        // Where neighbours of one kind touch, the mould grows across: one mass, not two.
+        for core in [false, true] {
+            for &(i, j, d, side) in &joins {
+                let ((x0, y0), (x1, y1)) = (center(i), center(j));
+                let (rim, inner) =
+                    &self.scene.necks[side as usize][d][(i * 7 + j * 3) % art::BRIDGE_VARIANTS];
+                let h = BRIDGE as i32 / 2;
+                let img = if core { inner } else { rim };
+                slime::blit(
+                    f,
+                    q,
+                    img,
+                    ((x0 + x1) / 2.0) as i32 - h,
+                    ((y0 + y1) / 2.0) as i32 - h,
+                );
             }
-            if anim.is_none_or(|a| self.t >= a.start) {
-                f.blit(&sprites(side)[stage], sx, sy, Some(art::TRANSPARENT));
+        }
+        // Globs in flight go over everything on the tray.
+        for o in self.oozes.iter().filter(|o| o.leap && t >= o.start) {
+            let s = ((t - o.start) as f32 / o.len as f32).min(1.0);
+            let (glob, shadow, trail) = slime::leap(o.from, o.to, s, o.seed);
+            if let Some(b) = shadow {
+                slime::shadow(f, q, b, 0.45);
             }
+            slime::draw(f, q, &trail, o.side as usize);
+            slime::draw(f, q, &glob, o.side as usize);
         }
 
         if let Some(sel) = self.selected {
@@ -289,7 +496,7 @@ impl Sporagon {
         for (k, line) in self.message.lines().enumerate() {
             f.text(nx + 6, ny + 30 + k as i32 * 17, line, art::PEN, None, font);
         }
-        f.text(nx + 6, ny + 100, "N new  Esc quit", art::DIM, None, font);
+        f.text(nx + 6, ny + 100, "N new D demo", art::DIM, None, font);
 
         f.blit(&self.cursor, mouse.0, mouse.1, Some(art::TRANSPARENT));
     }
@@ -361,10 +568,13 @@ impl DosGame for Sporagon {
             phase: Phase::Player,
             selected: None,
             anims: Vec::new(),
+            oozes: Vec::new(),
+            vanishing: Vec::new(),
             rng: Rng(0x1234_5678_9ABC_DEF1),
             t: 0,
             sfx: None,
             flicker: 0,
+            demo: false,
             message: "",
         };
         g.new_game();
@@ -376,6 +586,13 @@ impl DosGame for Sporagon {
             match k.scan {
                 sc::ESC => dos.exit(),
                 sc::N => self.new_game(),
+                sc::D => {
+                    self.demo = !self.demo;
+                    if self.phase == Phase::Player {
+                        self.selected = None;
+                        self.begin_turn(PLAYER);
+                    }
+                }
                 _ => {}
             }
         }
@@ -386,18 +603,23 @@ impl DosGame for Sporagon {
 
         let t = self.t;
         self.anims.retain(|a| t < a.start + GROW);
+        self.oozes.retain(|o| t < o.start + o.life);
+        self.vanishing.retain(|v| t < v.start + VANISH);
         match self.phase {
             Phase::Player if clicks > 0 => self.handle_click(hover),
-            Phase::Growing(side) if self.anims.is_empty() => self.begin_turn(side),
-            Phase::Thinking(0) => {
+            Phase::Growing(side)
+                if self.anims.is_empty() && self.oozes.is_empty() && self.vanishing.is_empty() =>
+            {
+                self.begin_turn(side)
+            }
+            Phase::Thinking(side, 0) => {
                 let mut rng = Rng(self.rng.next() as u64 | 1);
-                let side = PLAYER.other();
                 match board::best_move(&self.board, side, AI_DEPTH, || rng.next()) {
                     Some(mv) => self.play(side, mv),
                     None => self.begin_turn(side),
                 }
             }
-            Phase::Thinking(n) => self.phase = Phase::Thinking(n - 1),
+            Phase::Thinking(side, n) => self.phase = Phase::Thinking(side, n - 1),
             _ => {}
         }
         self.update_sound(dos);
@@ -428,6 +650,7 @@ const KEYS: &[(&str, &str)] = &[
         "click your colony, then a cup: next to it clones, two away jumps",
     ),
     ("N", "new game"),
+    ("D", "demo: the computer plays both sides"),
     ("Esc", "quit"),
 ];
 

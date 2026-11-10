@@ -25,6 +25,7 @@ when the tray is full wins.
 |-----|---|
 | Mouse | select and move |
 | `N` | new game |
+| `D` | demo: the computer plays both sides |
 | `Esc` | quit |
 | `Alt+C` | cycle the CRT filter |
 | `Alt+Enter` | fullscreen |
@@ -39,6 +40,13 @@ prepared for VGA. Some details:
 - **Penicillium**: velvety blue-green zones, radial furrows, dusty spore bloom, a white fuzzy
   margin of young hyphae, and amber guttation droplets on mature colonies.
 - **Rhizopus**: a tangle of white cottony hyphae with sporangia that ripen from white to black.
+- **Slime**: every colony sits in a glossy mucus puddle (metaballs, shaded and blended
+  translucently into the 256-color frame). Neighbouring colonies of one kind are joined by
+  slime and grow across the ridge between their cups into one mould mass.
+- **Moves**: a clone pushes a pulsing pseudopod into the next cup before the new colony
+  grows; a jump gathers a glob that snaps off its thread and arcs over the tray with a shadow
+  and a trail of drops while the old colony shrinks away; every takeover is a pseudopod
+  reaching into the victim's cup.
 - **Fridge**: a dimpled egg tray lit by the bulb, condensation drops, brown drips, black
   mildew in the corners, and a bulb that flickers through the palette now and then.
 
@@ -47,6 +55,9 @@ retrace. Moves and takeovers play PC-speaker sweeps. The computer searches three
 with alpha-beta pruning.
 
 ## Development
+
+Code: `src/board.rs` (rules, AI), `src/main.rs` (game loop, animation, screen),
+`src/art/` (`mod.rs` palette and layout, `spores.rs` the moulds, `slime.rs`, `fridge.rs`).
 
 ```sh
 task test       # rules, AI self-play, layout
