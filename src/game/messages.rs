@@ -1,6 +1,7 @@
 //! What the black label strips on the wall say, one strip per line. Each line must fit the
 //! label column, which the test below checks.
 
+use super::PLAYER;
 use crate::board::Side;
 
 /// What the message strips say: the state of play, as the player should read it.
@@ -37,6 +38,19 @@ impl Message {
         Message::Draw,
     ];
 
+    /// The end message for these final colony counts of the human's side (`PLAYER`) and the
+    /// computer's. In demo mode the computer played both, so the winning mould is named.
+    pub(super) fn game_over(player: usize, computer: usize, demo: bool) -> Message {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        match (player.cmp(&computer), demo) {
+            (Greater, false) => Message::Win,
+            (Less, false) => Message::Lose,
+            (Greater, true) => Message::Wins(PLAYER),
+            (Less, true) => Message::Wins(PLAYER.other()),
+            (Equal, _) => Message::Draw,
+        }
+    }
+
     /// The strips' text, one strip per line.
     pub(super) fn text(self) -> &'static str {
         match self {
@@ -57,6 +71,21 @@ impl Message {
 mod tests {
     use super::*;
     use crate::art;
+
+    #[test]
+    fn the_end_message_names_the_right_winner() {
+        assert_eq!(Message::game_over(30, 28, false), Message::Win);
+        assert_eq!(Message::game_over(28, 30, false), Message::Lose);
+        assert_eq!(Message::game_over(29, 29, false), Message::Draw);
+        assert_eq!(Message::game_over(29, 29, true), Message::Draw);
+        assert_eq!(Message::game_over(30, 28, true), Message::Wins(PLAYER));
+        assert_eq!(
+            Message::game_over(28, 30, true),
+            Message::Wins(PLAYER.other())
+        );
+        // The human plays Penicillium, so its win reads as such in demo mode.
+        assert_eq!(Message::Wins(PLAYER).text(), "PENICILLIUM\nWINS");
+    }
 
     #[test]
     fn every_message_fits_the_label_column() {

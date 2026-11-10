@@ -199,13 +199,7 @@ impl Sporagon {
 
             let player_count = self.board.count(PLAYER);
             let computer_count = self.board.count(PLAYER.other());
-            self.message = match (player_count.cmp(&computer_count), self.demo) {
-                (std::cmp::Ordering::Greater, false) => Message::Win,
-                (std::cmp::Ordering::Less, false) => Message::Lose,
-                (std::cmp::Ordering::Greater, true) => Message::Wins(PLAYER),
-                (std::cmp::Ordering::Less, true) => Message::Wins(PLAYER.other()),
-                (std::cmp::Ordering::Equal, _) => Message::Draw,
-            };
+            self.message = Message::game_over(player_count, computer_count, self.demo);
             self.sfx = Some(Sfx {
                 from: 200.0,
                 to: 50.0,
@@ -342,7 +336,14 @@ impl DosGame for Sporagon {
                 sc::N => self.new_game(),
                 sc::D => {
                     self.demo = !self.demo;
-                    if self.phase == Phase::Player {
+                    // Whenever Penicillium is about to move, hand it over at once: to the
+                    // computer, or back to the human during the computer's pause.
+                    let peni_to_move = match self.phase {
+                        Phase::Player => true,
+                        Phase::Thinking(side, _) => side == PLAYER,
+                        _ => false,
+                    };
+                    if peni_to_move {
                         self.selected = None;
                         self.begin_turn(PLAYER);
                     }
