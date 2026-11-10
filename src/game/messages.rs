@@ -19,6 +19,7 @@ pub(super) const MSG_PENI_WINS: &str = "PENICILLIUM\nWINS";
 pub(super) const MSG_RHIZO_WINS: &str = "RHIZOPUS\nWINS";
 /// Game over with equal counts.
 pub(super) const MSG_DRAW: &str = "A DRAW\nNOBODY\nCLEANS UP";
+
 /// Every message, for the test that they fit the label column.
 #[cfg(test)]
 const MESSAGES: [&str; 9] = [
