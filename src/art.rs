@@ -9,8 +9,17 @@ use game_toolkit_dosvideo::prelude::Bitmap;
 
 pub mod dymo;
 mod fridge;
+mod noise;
+mod palette;
+mod shading;
 pub mod slime;
 mod spores;
+
+pub use noise::Rng;
+pub(crate) use noise::{fbm, hash, vnoise};
+pub use palette::Quantizer;
+use palette::{bayer, median_cut};
+pub(crate) use shading::{facing, glint, lerp, mix, scale, smooth};
 
 use fridge::paint_fridge;
 use spores::{penicillium, penicillium_neck, rhizopus, rhizopus_neck};
@@ -126,137 +135,6 @@ fn hex_norm(dx: f32, dy: f32) -> f32 {
     let along_minus_60 = (dx * 0.5 - dy * SQ3 / 2.0).abs();
     along_x.max(along_60).max(along_minus_60) / (R * SQ3 / 2.0)
 }
-
-// ------------------------------------------------------------------------------------------
-// Noise
-
-/// Deterministic hash of an integer lattice point to 0..1 (24 bits of precision).
-///
-/// Multiplies each input by a large odd constant, xors them and runs a short avalanche
-/// (xorshift, multiply, xorshift). Same inputs always give the same value.
-pub(crate) fn hash(x: i32, y: i32, seed: u32) -> f32 {
-    let mut state = (x as u32).wrapping_mul(374_761_393)
-        ^ (y as u32).wrapping_mul(668_265_263)
-        ^ seed.wrapping_mul(2_246_822_519);
-    state = (state ^ (state >> 13)).wrapping_mul(1_274_126_177);
-    state ^= state >> 16;
-
-    // Keep the low 24 bits, the most an f32 mantissa holds exactly; 2^24 = 16 777 216.
-    (state & 0xFF_FFFF) as f32 / 16_777_216.0
-}
-
-/// Value noise in 0..1: [`hash`] at the four surrounding lattice points, blended with a
-/// smoothstep so the result is continuous with a continuous slope. One lattice cell is one
-/// unit of `x` and `y`.
-pub(crate) fn vnoise(x: f32, y: f32, seed: u32) -> f32 {
-    let (x0, y0) = (x.floor(), y.floor());
-    let (frac_x, frac_y) = (x - x0, y - y0);
-    // Smoothstep 3t² - 2t³ of the fractions.
-    let (ease_x, ease_y) = (
-        frac_x * frac_x * (3.0 - 2.0 * frac_x),
-        frac_y * frac_y * (3.0 - 2.0 * frac_y),
-    );
-
-    let (ix, iy) = (x0 as i32, y0 as i32);
-    let top_left = hash(ix, iy, seed);
-    let top_right = hash(ix + 1, iy, seed);
-    let bottom_left = hash(ix, iy + 1, seed);
-    let bottom_right = hash(ix + 1, iy + 1, seed);
-
-    let top = lerp(top_left, top_right, ease_x);
-    let bottom = lerp(bottom_left, bottom_right, ease_x);
-    lerp(top, bottom, ease_y)
-}
-
-/// Fractal (fBm) value noise in 0..1, summing `octaves` layers of [`vnoise`].
-///
-/// 1. Octave `o` is sampled at frequency `2.03^o` with seed `seed + 101 o`, so layers are
-///    decorrelated. The 2.03 (rather than 2) keeps the lattices of successive octaves from
-///    lining up into visible grid artefacts.
-/// 2. Each octave has half the amplitude of the one before.
-/// 3. The sum is divided by the total amplitude, so the result stays in 0..1.
-pub(crate) fn fbm(x: f32, y: f32, seed: u32, octaves: u32) -> f32 {
-    let (mut sum, mut amplitude, mut total_amplitude, mut frequency) = (0.0, 1.0, 0.0, 1.0);
-    for octave in 0..octaves {
-        sum += amplitude * vnoise(x * frequency, y * frequency, seed + octave * 101);
-        total_amplitude += amplitude;
-        amplitude *= 0.5;
-        frequency *= 2.03;
-    }
-    sum / total_amplitude
-}
-
-/// Linear interpolation from `a` (at `t = 0`) to `b` (at `t = 1`); `t` is not clamped.
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-/// Per-channel blend of two RGB colours, `t` clamped to 0..1 (0 gives `a`, 1 gives `b`).
-pub(crate) fn mix(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    let t = t.clamp(0.0, 1.0);
-    [
-        lerp(a[0], b[0], t),
-        lerp(a[1], b[1], t),
-        lerp(a[2], b[2], t),
-    ]
-}
-
-/// Multiply each channel of `colour` by `factor` (brighten above 1, darken below; no clamp).
-pub(crate) fn scale(colour: [f32; 3], factor: f32) -> [f32; 3] {
-    [colour[0] * factor, colour[1] * factor, colour[2] * factor]
-}
-
-/// Direction to the bulb: top right, in front of the tray (screen space, y down).
-/// Roughly unit length.
-const LIGHT: [f32; 3] = [0.45, -0.6, 0.66];
-
-/// Lambert term for the unit normal `normal` (not clamped): -1..1, 1 facing the bulb.
-pub(crate) fn facing(normal: [f32; 3]) -> f32 {
-    normal[0] * LIGHT[0] + normal[1] * LIGHT[1] + normal[2] * LIGHT[2]
-}
-
-/// Blinn term for the unit normal `normal` with the viewer straight above (not clamped).
-///
-/// The half vector is `LIGHT + (0, 0, 1)` normalised, so `normal · half` expands to
-/// `(facing(normal) + normal.z) / |LIGHT + (0, 0, 1)|`. Raise it to a power for the highlight.
-pub(crate) fn glint(normal: [f32; 3]) -> f32 {
-    // |LIGHT + (0, 0, 1)|
-    const HALF_LEN: f32 = 1.8216;
-    (facing(normal) + normal[2]) / HALF_LEN
-}
-
-/// Smoothstep: 0 for `x <= e0`, 1 for `x >= e1`, and a smooth `3t² - 2t³` ramp in between.
-/// Assumes `e0 != e1`.
-pub(crate) fn smooth(e0: f32, e1: f32, x: f32) -> f32 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-/// Small deterministic RNG for scattering things (xorshift64). The state must not be 0.
-pub struct Rng(pub u64);
-
-impl Rng {
-    /// Next 32 random bits (the high half of the 64-bit state).
-    pub fn next(&mut self) -> u32 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        (self.0 >> 32) as u32
-    }
-
-    /// Uniform float in 0..1 (24 bits of precision).
-    pub fn f(&mut self) -> f32 {
-        (self.next() >> 8) as f32 / 16_777_216.0
-    }
-
-    /// Uniform float in `a..b`.
-    pub fn range(&mut self, a: f32, b: f32) -> f32 {
-        a + (b - a) * self.f()
-    }
-}
-
-// ------------------------------------------------------------------------------------------
-// Colonies
 
 /// A square true-colour sprite with coverage.
 ///
@@ -548,125 +426,6 @@ pub fn paint(centers: &[(f32, f32, bool)]) -> Scene {
         palette,
         quant,
     }
-}
-
-/// Ordered-dither threshold for pixel `(x, y)`: the 4x4 Bayer matrix, tiled over the screen,
-/// as 16 evenly spaced values in 0..1 (`(m + 0.5) / 16`, never exactly 0 or 1).
-fn bayer(x: usize, y: usize) -> f32 {
-    const MATRIX: [[u8; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
-    (MATRIX[y % 4][x % 4] as f32 + 0.5) / 16.0
-}
-
-/// Nearest palette colour after a 4x4 Bayer nudge, cached on a 6-bit RGB grid.
-pub struct Quantizer {
-    /// The palette being matched, RGB 0..255. Entries below `FIRST_FREE` are never chosen.
-    pub pal: [[u8; 3]; 256],
-    /// Palette index per 6-bit-per-channel RGB cell (`2^18` cells); 0 means not computed yet
-    /// (index 0 is the transparent key and is never a match, so it can serve as the marker).
-    cache: Vec<u8>,
-}
-
-/// Peak-to-peak dither nudge in 0..255 units (about ±6 per channel).
-const DITHER_SPREAD: f32 = 12.0;
-
-impl Quantizer {
-    /// A quantiser for `pal` with an empty cache.
-    fn new(pal: [[u8; 3]; 256]) -> Self {
-        Self {
-            pal,
-            cache: vec![0; 1 << 18],
-        }
-    }
-
-    /// Palette index for `colour` (RGB 0..255, out-of-range values clamped) at screen pixel
-    /// `(x, y)`.
-    ///
-    /// 1. Nudge all channels by the Bayer threshold at `(x, y)`, centred on 0 and scaled to
-    ///    ±`DITHER_SPREAD / 2`, so flat areas dither between neighbouring entries.
-    /// 2. Reduce to a 6-bit-per-channel cell and use it as the cache key.
-    /// 3. On a miss, find the free palette entry nearest the cell centre by weighted squared
-    ///    distance (green 4, blue 3, red 2: roughly the eye's sensitivity) and cache it.
-    pub fn get(&mut self, colour: [f32; 3], x: usize, y: usize) -> u8 {
-        let nudge = (bayer(x, y) - 0.5) * DITHER_SPREAD;
-        let cell = colour.map(|v| ((v + nudge).clamp(0.0, 255.0) as usize) >> 2);
-        let key = cell[0] << 12 | cell[1] << 6 | cell[2];
-
-        if self.cache[key] == 0 {
-            // Centre of the 4-wide cell back in 0..255.
-            let cell_centre = cell.map(|v| (v << 2) as f32 + 2.0);
-            let mut best = (f32::MAX, 1);
-            // Skip the transparent key and the UI colours.
-            for (i, entry) in self.pal.iter().enumerate().skip(FIRST_FREE) {
-                let (dr, dg, db) = (
-                    cell_centre[0] - entry[0] as f32,
-                    cell_centre[1] - entry[1] as f32,
-                    cell_centre[2] - entry[2] as f32,
-                );
-                let distance = 2.0 * dr * dr + 4.0 * dg * dg + 3.0 * db * db;
-                if distance < best.0 {
-                    best = (distance, i);
-                }
-            }
-            self.cache[key] = best.1 as u8;
-        }
-        self.cache[key]
-    }
-}
-
-/// Reduce `samples` to at most `count` representative colours (median cut).
-///
-/// 1. Start with one box holding every sample.
-/// 2. Until there are `count` boxes: pick the box (with more than one sample) whose widest
-///    channel range, times the square root of its population, is largest; sort it along that
-///    channel and split it at the median. Stop early if no box can be split.
-/// 3. Each box becomes the mean colour of its samples.
-///
-/// Ties go to the last maximum, as `max_by` does; the result depends on sample order.
-fn median_cut(samples: Vec<[u8; 3]>, count: usize) -> Vec<[u8; 3]> {
-    let mut boxes = vec![samples];
-    while boxes.len() < count {
-        // Split the box with the widest channel range (weighted by population).
-        let Some((box_index, channel, _)) = boxes
-            .iter()
-            .enumerate()
-            .filter(|(_, bucket)| bucket.len() > 1)
-            .map(|(i, bucket)| {
-                let (channel, range) = (0..3)
-                    .map(|channel| {
-                        let (lo, hi) = bucket.iter().fold((255u8, 0u8), |(lo, hi), p| {
-                            (lo.min(p[channel]), hi.max(p[channel]))
-                        });
-                        (channel, (hi - lo) as f32)
-                    })
-                    .max_by(|a, b| a.1.total_cmp(&b.1))
-                    .unwrap();
-                (i, channel, range * (bucket.len() as f32).sqrt())
-            })
-            .max_by(|a, b| a.2.total_cmp(&b.2))
-        else {
-            break;
-        };
-
-        let mut lower = boxes.swap_remove(box_index);
-        lower.sort_unstable_by_key(|p| p[channel]);
-        let upper = lower.split_off(lower.len() / 2);
-        boxes.push(lower);
-        boxes.push(upper);
-    }
-
-    boxes
-        .iter()
-        .map(|bucket| {
-            let sum = bucket.iter().fold([0u64; 3], |sum, p| {
-                [
-                    sum[0] + p[0] as u64,
-                    sum[1] + p[1] as u64,
-                    sum[2] + p[2] as u64,
-                ]
-            });
-            sum.map(|v| (v / bucket.len().max(1) as u64) as u8)
-        })
-        .collect()
 }
 
 #[cfg(test)]
