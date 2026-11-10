@@ -10,7 +10,7 @@ mod play;
 use crate::art::{self, BRIDGE, Rgba, Rng, SPR, STAGES, Scene, slime};
 use crate::board::{self, Board, Cell, Move, Side, geometry};
 use game_toolkit_dosvideo::prelude::*;
-use messages::*;
+use messages::Message;
 use std::collections::HashMap;
 
 /// The side the human plays, unless in demo mode.
@@ -127,7 +127,7 @@ pub struct Sporagon {
     /// The computer plays both sides.
     demo: bool,
     /// What the message strips say, one strip per line.
-    message: &'static str,
+    message: Message,
 }
 
 /// Screen-pixel centre of cell `i`.
@@ -172,7 +172,7 @@ impl Sporagon {
             .collect();
 
         self.phase = Phase::Growing(PLAYER);
-        self.message = MSG_GROWING;
+        self.message = Message::Growing;
     }
 
     /// The cell under screen pixel `(x, y)`, if any.
@@ -200,11 +200,11 @@ impl Sporagon {
             let player_count = self.board.count(PLAYER);
             let computer_count = self.board.count(PLAYER.other());
             self.message = match (player_count.cmp(&computer_count), self.demo) {
-                (std::cmp::Ordering::Greater, false) => MSG_WIN,
-                (std::cmp::Ordering::Less, false) => MSG_LOSE,
-                (std::cmp::Ordering::Greater, true) => MSG_PENI_WINS,
-                (std::cmp::Ordering::Less, true) => MSG_RHIZO_WINS,
-                (std::cmp::Ordering::Equal, _) => MSG_DRAW,
+                (std::cmp::Ordering::Greater, false) => Message::Win,
+                (std::cmp::Ordering::Less, false) => Message::Lose,
+                (std::cmp::Ordering::Greater, true) => Message::Wins(PLAYER),
+                (std::cmp::Ordering::Less, true) => Message::Wins(PLAYER.other()),
+                (std::cmp::Ordering::Equal, _) => Message::Draw,
             };
             self.sfx = Some(Sfx {
                 from: 200.0,
@@ -215,14 +215,10 @@ impl Sporagon {
             });
             self.phase = Phase::Over;
         } else if side == PLAYER && !self.demo {
-            self.message = MSG_YOUR_MOVE;
+            self.message = Message::YourMove;
             self.phase = Phase::Player;
         } else {
-            self.message = if side == PLAYER {
-                MSG_PENI_THINKS
-            } else {
-                MSG_RHIZO_THINKS
-            };
+            self.message = Message::Spreads(side);
             self.phase = Phase::Thinking(side, THINK);
         }
     }
@@ -323,7 +319,7 @@ impl DosGame for Sporagon {
             sfx: None,
             flicker: None,
             demo: false,
-            message: "",
+            message: Message::Growing,
         };
         game.new_game();
         Ok(game)

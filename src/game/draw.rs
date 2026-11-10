@@ -334,7 +334,7 @@ fn draw_hud(
     colonies: &[Vec<Vec<Bitmap>>; 2],
     board: &Board,
     demo: bool,
-    message: &str,
+    message: Message,
 ) {
     for side in [Side::Peni, Side::Rhizo] {
         let y = art::SIDE_Y[side as usize];
@@ -356,7 +356,7 @@ fn draw_hud(
         label(labels, frame, quant, who, 2, (art::HUD_X + 102, y + 70));
     }
 
-    for (k, line) in message.lines().enumerate() {
+    for (k, line) in message.text().lines().enumerate() {
         let x = art::HUD_CX + if k % 2 == 0 { -2 } else { 3 };
         let y = art::MESSAGE_Y + k as i32 * art::MESSAGE_STEP;
         label(labels, frame, quant, line, 2, (x, y));
