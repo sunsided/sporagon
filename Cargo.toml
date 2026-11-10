@@ -1,0 +1,19 @@
+[package]
+name = "sporagon"
+version = "0.1.0"
+edition = "2024"
+description = "Hexxagon-style mould war in a rundown fridge, in emulated VESA SVGA"
+license = "EUPL-1.2"
+repository = "https://github.com/sunsided/sporagon"
+authors = ["Markus Mayer"]
+publish = false
+
+[dependencies]
+game-toolkit-dosvideo = "0.3"
+
+# Procedural art and the AI search are heavy; keep debug builds playable.
+[profile.dev]
+opt-level = 2
+
+[profile.dev.package."*"]
+opt-level = 3

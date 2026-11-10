@@ -1,0 +1,45 @@
+# SPORAGON task runner
+# https://taskfile.dev
+version: '3'
+
+vars:
+  SHOT_FRAMES: '{{ .SHOT_FRAMES | default "150" }}'
+
+tasks:
+  default:
+    cmds:
+      - task --list --sort=none
+    silent: true
+
+  run:
+    desc: Play (release build)
+    cmds:
+      - cargo run --release {{.CLI_ARGS}}
+
+  build:
+    desc: Build the release binary
+    cmds:
+      - cargo build --release {{.CLI_ARGS}}
+
+  test:
+    desc: Run the rules, AI and layout tests
+    cmds:
+      - cargo test {{.CLI_ARGS}}
+
+  lint:
+    desc: Check formatting and run clippy
+    cmds:
+      - cargo fmt --check
+      - cargo clippy --all-targets -- -D warnings
+
+  check:
+    desc: Everything CI would run (lint and tests)
+    cmds:
+      - task: lint
+      - task: test
+
+  screenshot:
+    desc: Capture docs/screenshot.jpg through the VGA monitor CRT filter (needs a display)
+    cmds:
+      - DOSVIDEO_WINDOW_SHOT=target/screenshot.png DOSVIDEO_WINDOW_SHOT_FRAMES={{.SHOT_FRAMES}} DOSVIDEO_CRT=3 cargo run --release
+      - convert target/screenshot.png -quality 88 docs/screenshot.jpg
