@@ -1,6 +1,6 @@
 [package]
 name = "sporagon"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Hexxagon-style mould war in a rundown fridge, in emulated VESA SVGA"
 license = "EUPL-1.2"

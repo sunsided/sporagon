@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-10
+
 ### Fixed
 
 - Quick clicks and trackpad taps that start and end within one frame now select and move
@@ -30,5 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A browser build (Trunk, WebAssembly) alongside the native one, released to
   [games.markusmayer.dev](https://games.markusmayer.dev).
 
-[Unreleased]: https://github.com/sunsided/sporagon/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sunsided/sporagon/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/sunsided/sporagon/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/sunsided/sporagon/releases/tag/v0.1.0
